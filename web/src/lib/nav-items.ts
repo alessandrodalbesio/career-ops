@@ -1,4 +1,4 @@
-import { House, Compass, ListChecks, Send, Radar, BarChart3, FileText, Files, Settings, CalendarClock, FolderOpen } from "lucide-react";
+import { House, Compass, ListChecks, Send, Radar, BarChart3, FileText, Files, Settings, CalendarClock, FolderOpen, UserRound } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 
 // Single source of truth for the app's primary destinations — shared by the
@@ -19,6 +19,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/portals", label: "Portals", icon: Radar },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/cv", label: "CV", icon: FileText },
+  { href: "/profile", label: "Profile", icon: UserRound },
   { href: "/documents", label: "Documents", icon: Files },
   { href: "/output", label: "Preparation", icon: FolderOpen },
   { href: "/config", label: "Config", icon: Settings },
