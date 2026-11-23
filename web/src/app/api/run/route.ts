@@ -35,13 +35,14 @@ import { readJsonObject } from "@/lib/json-body";
 import { writeEvaluationInstructions } from "@/lib/evaluation-instructions-file.mjs";
 import { spillOversizedPrompt } from "@/lib/oversized-prompt.mjs";
 import { parseEvaluationOptions, selectedEvaluationInstructions } from "@/lib/evaluation-options.mjs";
+import { createRun, endRun, hasRun, publish, runResponseStream, runsDir, safeRunId, setCancel } from "@/lib/run-hub.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 800; // a real oferta evaluation / pdf-mode CV tailoring + render is heavy and multi-step
 
 export async function POST(req: Request) {
-  const body = await readJsonObject<{ kind?: string; input?: string; cliId?: string; brief?: unknown; evaluationSections?: unknown; ats?: unknown }>(req);
+  const body = await readJsonObject<{ kind?: string; input?: string; cliId?: string; brief?: unknown; evaluationSections?: unknown; ats?: unknown; runId?: unknown; meta?: unknown }>(req);
   if (!body) return new Response(JSON.stringify({ error: "bad json" }), { status: 400 });
   const { kind = "evaluate", input, cliId: requestedCliId, brief } = body;
   const evaluation = kind === "evaluate" ? parseEvaluationOptions(body.evaluationSections) : undefined;
@@ -224,12 +225,9 @@ export async function POST(req: Request) {
     // board that renders its JD from script data looks like an empty shell to the
     // worker and the run ends as "Needs review" on a live posting. null (plain
     // boards, any miss) leaves the worker on its WebFetch path.
-    const prefetch = kind === "evaluate" ? await prefetchJd(input, runCoreCli, req.signal) : null;
-    // The caller went away while the JD was being read: do not start a worker for nobody.
-    if (req.signal.aborted) {
-      if (writeToken !== null) releaseTrackerWrite(writeToken);
-      return new Response(null, { status: 499 });
-    }
+    // No request abort signal: runs outlive the browser (run-hub.mjs), so a tab
+    // closed while the JD is read must not drop the evaluation.
+    const prefetch = kind === "evaluate" ? await prefetchJd(input, runCoreCli) : null;
     // A partial JD must not reach a worker that could score and save it as the
     // whole posting, so refuse here instead of trusting the prompt to stop it.
     if (isTruncatedJd(prefetch?.text)) {
@@ -319,25 +317,30 @@ export async function POST(req: Request) {
   // the encoding makes Node hold partial sequences across chunks.
   child.stdout.setEncoding("utf8");
   child.stderr.setEncoding("utf8");
-  const enc = new TextEncoder();
 
-  // Stream-lifetime state lives outside start() so cancel() (client disconnect)
-  // can stop every timer before the child's late handlers run. send() is also
-  // try/catch'd so a late enqueue cannot throw uncaught (see #1155).
+  // The run belongs to the server, not to this request (run-hub.mjs): events go
+  // to the hub, and this response is just one subscriber. A client that reloads
+  // or closes the tab no longer stops the CLI; only the per-kind timeout below
+  // or an explicit cancel (/api/runs/live/[id]/cancel) does.
+  const requestedRunId = safeRunId(body.runId);
+  const runId = requestedRunId && !hasRun(requestedRunId) ? requestedRunId : `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const meta = body.meta && typeof body.meta === "object" && !Array.isArray(body.meta) ? (body.meta as Record<string, unknown>) : {};
+  createRun({ id: runId, meta: { ...meta, kind, input }, dir: runsDir(careerOpsRoot()) });
+
+  // `closed` now means "the run is over", never "the client left".
   let closed = false;
   let killer: ReturnType<typeof setTimeout> | undefined;
-  let heartbeat: ReturnType<typeof setInterval> | undefined;
-  // pdf render and evaluate persist keep running after the agent child closes.
-  // cancel() must not release the tracker guard until that work settles.
-  let pdfRenderPromise: Promise<void> | null = null;
-  let evaluatePersistPromise: Promise<void> | null = null;
+  let cancelledByUser = false;
   // Cancellation only requests termination. Keep the guard until the child
   // actually closes and any render or persist work has finished.
   const finishRun = createRunFinalizer(child, () => {
     if (writeToken !== null) releaseTrackerWrite(writeToken);
   });
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
+  setCancel(runId, () => {
+    cancelledByUser = true;
+    try { child.kill("SIGTERM"); } catch { /* ignore */ }
+  });
+  {
       let buf = "";
       let emittedText = false; // any assistant text delta → the CLI actually ran
       // Set ONLY by an authoritative structured-stream signal (the ev.error branch
@@ -392,16 +395,7 @@ export async function POST(req: Request) {
       }, killMs);
       const send = (obj: unknown) => {
         if (closed) return;
-        try {
-          controller.enqueue(enc.encode(JSON.stringify(obj) + "\n"));
-        } catch {
-          // The client is gone. Stop the heartbeat here rather than waiting for
-          // close(): the child can still run for minutes (maxDuration 800s), and
-          // a user retrying a failed run would otherwise accumulate one live
-          // timer per abandoned request.
-          closed = true;
-          if (heartbeat) clearInterval(heartbeat);
-        }
+        publish(runId, obj);
       };
       // Say so when the chosen runtime has no permission mechanism we can apply.
       // Claude gets tool allow/deny lists and Codex an OS sandbox; the rest run
@@ -416,24 +410,14 @@ export async function POST(req: Request) {
       const fencing = fencingReport({ cliId, cliName: spec.name, capabilities: capabilitiesFor(kind) });
       if (fencing.notice) send({ type: "status", label: fencing.notice });
       if (substitution) send({ type: "status", label: substitution });
-      // Time-based keepalive. The stream is silent whenever the agent is thinking
-      // or inside a long tool call, and in pdf mode it is silent for the whole
-      // 15-25 KB <<cv-html>> envelope (cvFilter swallows every byte). Measured
-      // idle gaps on a real pdf run reached 149s — long enough for the browser or
-      // a proxy to drop the connection, after which the client reports
-      // "Connection error" even though the agent finished and the PDF rendered.
-      // It must be a timer, not a hook on incoming text: piggy-backing on agent
-      // output cannot fire during exactly the silences it needs to cover.
-      // Unknown event types are ignored by the client's switch, so old tabs are safe.
-      heartbeat = setInterval(() => send({ type: "keepalive" }), 10_000);
+      // Keepalives are per subscriber now (runResponseStream in run-hub.mjs).
       const close = () => {
         // Resource cleanup is independent of whether the client can still read.
         finishRun();
         if (!closed) {
           closed = true;
-          if (heartbeat) clearInterval(heartbeat);
           if (killer) clearTimeout(killer);
-          try { controller.close(); } catch { /* */ }
+          endRun(runId);
         }
       };
       // pdf's CV arrives inline in a <<cv-html>> envelope (#2185); evaluate's
@@ -602,10 +586,12 @@ export async function POST(req: Request) {
       child.on("close", (code) => {
         // A trailing line with no newline would otherwise never be tested.
         if (stderrBuf) { flagStderrLine(stderrBuf); stderrBuf = ""; }
-        // A disconnected client must not start a new PDF render. Still finish
-        // the run here: an enqueue failure closes the transport without calling
-        // cancel(), and must not leave the tracker guard held forever.
         if (closed) return close();
+        // Stopped from the Activity tray: say so instead of blaming the CLI.
+        if (cancelledByUser) {
+          send({ type: "error", msg: "Cancelled" });
+          return close();
+        }
         // A timeout is the ROOT cause behind every "no report / not clean"
         // symptom the gates below test, so classify it FIRST, for any kind.
         // Otherwise a run we cut off at the time limit reads as "the CLI couldn't
@@ -662,9 +648,8 @@ export async function POST(req: Request) {
             send({ type: "error", msg: "Internal error: the pdf run passed its gate with no CV to save — please report this." });
           } else {
             sendWarnings(envelope.warnings);
-            // Tracked so cancel() can defer releasing writeToken until this
-            // settles. close() happens once rendering finishes, not here.
-            pdfRenderPromise = withSharedPdfPath(pdfPaths.html, async () => {
+            // close() happens once rendering finishes, not here.
+            void withSharedPdfPath(pdfPaths.html, async () => {
               let scratchDir = "";
               try {
                 // The profile outranks the agent's pick, and auto maps the
@@ -736,7 +721,7 @@ export async function POST(req: Request) {
           } else if (envelope?.ok !== true) {
             send({ type: "error", msg: "Internal error: the evaluate run passed its gate with no report to save — please report this." });
           } else {
-            evaluatePersistPromise = persistEval(envelope.markdown);
+            void persistEval(envelope.markdown);
             return;
           }
           return close();
@@ -761,29 +746,14 @@ export async function POST(req: Request) {
         }
         close();
       });
-    },
-    cancel() {
-      closed = true;
-      if (heartbeat) clearInterval(heartbeat);
-      if (killer) clearTimeout(killer);
-      try { child.kill("SIGTERM"); } catch { /* ignore */ }
-      const followup = pdfRenderPromise ?? evaluatePersistPromise;
-      if (followup) {
-        // Render/mark or evaluate persist keeps running after this client
-        // disconnects. Wait for it before releasing the guard, so a concurrent
-        // tracker delete cannot race the still-in-flight write.
-        followup.finally(finishRun);
-      } else {
-        finishRun();
-      }
-    },
-  });
+  }
 
-  return new Response(stream, {
+  return new Response(runResponseStream(runId, runsDir(careerOpsRoot())), {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       "X-Accel-Buffering": "no",
+      "X-Run-Id": runId,
     },
   });
 }

@@ -51,7 +51,8 @@ function pdfScratchFinally() {
 
 test("self-check: the PDF scratch finally still exists", () => {
   assert.match(src, /fs\.rmSync\(scratchDir/, "route.ts no longer deletes scratchDir");
-  assert.match(src, /pdfRenderPromise = withSharedPdfPath/, "route.ts no longer renders inside the shared PDF path");
+  // The render promise is no longer tracked: runs outlive the request (run-hub.mjs), so nothing waits on it.
+  assert.match(src, /void withSharedPdfPath/, "route.ts no longer renders inside the shared PDF path");
   pdfScratchFinally();
 });
 
