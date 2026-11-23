@@ -13,10 +13,14 @@ export default function manifest(): MetadataRoute.Manifest {
     display: "standalone",
     background_color: "#f8f8f9",
     theme_color: "#f8f8f9",
+    // "any" icons are transparent (Android splash screen and app lists);
+    // "maskable" icons carry the light-blue background (Android home-screen icon).
+    // iPhone uses apple-icon.png (light-blue background) from the page head instead.
     icons: [
-      { src: "/icon1.png", sizes: "192x192", type: "image/png" },
-      { src: "/icon2.png", sizes: "512x512", type: "image/png" },
-      { src: "/apple-icon.png", sizes: "180x180", type: "image/png" },
+      { src: "/icon3.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icon4.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/icon1.png", sizes: "192x192", type: "image/png", purpose: "maskable" },
+      { src: "/icon2.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
     share_target: {
       action: "/share",

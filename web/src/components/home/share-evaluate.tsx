@@ -20,6 +20,7 @@ export function ShareEvaluate({ url }: { url: string }) {
   const { sections } = useEvaluationOptions();
   const router = useRouter();
   const [startedUrl, setStartedUrl] = useState("");
+  const [closing, setClosing] = useState(false);
   const once = useRef(false);
 
   useEffect(() => {
@@ -39,6 +40,13 @@ export function ShareEvaluate({ url }: { url: string }) {
     setStartedUrl(url || previous);
     // Drop the link from the address bar so a refresh cannot resubmit it.
     if (url) router.replace("/share");
+    // Fork: runs now continue on the server, so when the installed app was opened from the
+    // share sheet (Android), close it after a moment and land back in LinkedIn. Browsers that
+    // refuse window.close() just keep the page, which tells the user they can go back.
+    if (url && previous !== url && window.matchMedia("(display-mode: standalone)").matches) {
+      setTimeout(() => setClosing(true), 1500);
+      setTimeout(() => window.close(), 2500);
+    }
   }, [url, sections, startJob, router]);
 
   const job = useMemo(
@@ -67,7 +75,8 @@ export function ShareEvaluate({ url }: { url: string }) {
           <p className="mt-4 inline-flex items-center gap-1.5 text-xs text-faint">
             {done ? <><Check className="size-3.5 text-emerald-800 dark:text-emerald-400" /> Done{job?.result?.score ? ` · ${job.result.score}` : ""}</>
               : failed ? <><TriangleAlert className="size-3.5 text-amber-800 dark:text-amber-400" /> Something went wrong. Try sharing it again.</>
-              : <><Loader2 className="size-3.5 animate-spin" /> This takes a few minutes. Keep this page open.</>}
+              : closing ? <><Check className="size-3.5 text-emerald-800 dark:text-emerald-400" /> Started. Going back…</>
+              : <><Loader2 className="size-3.5 animate-spin" /> This takes a few minutes. You can go back to LinkedIn: Miao keeps working.</>}
           </p>
           {(done || failed) && (
             <Link href="/pipeline" className="mt-6 inline-flex h-9 items-center rounded-xl bg-brand px-4 text-sm font-medium text-brand-foreground hover:bg-brand-200">
