@@ -5,11 +5,11 @@
 // on hover/click; lists have one row per item with remove and "+ Add".
 // Every change saves on its own.
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Check, Loader2, Plus, TriangleAlert, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronDown, Info, Loader2, Plus, Star, TriangleAlert, X } from "lucide-react";
+import { Tip } from "@/components/ui/tip";
 import { JOB_PAGE_FRAME } from "@/components/page-frame";
-import { PROFILE_CARDS, type ProfileField, type ProfileTab } from "@/lib/profile-fields";
+import { PROFILE_CARDS, ROLE_TITLES_FIELD, isEmptyValue, joinNote, splitNote, type ProfileField, type ProfileTab } from "@/lib/profile-fields";
 import type { Role, RolesDoc } from "@/lib/profile-roles";
-import { RULE_GROUPS, type RuleGroupId, type RuleGroups } from "@/lib/profile-rules";
 import { cn } from "@/lib/cn";
 
 type Values = Record<string, unknown>;
@@ -37,7 +37,11 @@ function StatusBadge({ status }: { status?: Status }) {
 }
 
 function TextValue({ field, value, onSave }: { field: ProfileField; value: unknown; onSave: (v: string) => void }) {
-  const initial = value == null ? "" : String(value);
+  // Shown without "(user-stated …)" notes and without placeholder words like "not set";
+  // the note is put back on save so the file keeps it.
+  const raw = value == null ? "" : String(value);
+  const { text, note } = splitNote(raw);
+  const initial = isEmptyValue(text) ? "" : text;
   const [draft, setDraft] = useState(initial);
   const saved = useRef(initial);
   useEffect(() => { setDraft(initial); saved.current = initial; }, [initial]);
@@ -45,7 +49,7 @@ function TextValue({ field, value, onSave }: { field: ProfileField; value: unkno
     const v = draft.trim();
     if (v === saved.current) return;
     saved.current = v;
-    onSave(v);
+    onSave(joinNote(v, note));
   };
   if (field.kind === "long") {
     return (
@@ -143,7 +147,52 @@ function ListValue({ field, value, onSave }: { field: ProfileField; value: unkno
   );
 }
 
-function Switch({ on, label, onChange }: { on: boolean; label: string; onChange: (v: boolean) => void }) {
+// "Where you'd work": an Anywhere switch, or a set of place chips. Stored as one line of text.
+function PlacesValue({ value, onSave }: { value: unknown; onSave: (v: string) => void }) {
+  const { text, note } = splitNote(value == null ? "" : String(value));
+  const anywhere = /^anywhere\.?$/i.test(text.trim());
+  const parsed = anywhere || !text.trim() ? [] : text.split(/\s*,\s*(?:or\s+)?|\s+or\s+/i).map((p) => p.replace(/^or\s+/i, "").trim()).filter(Boolean);
+  const [places, setPlaces] = useState<string[]>(parsed);
+  const [draft, setDraft] = useState("");
+  useEffect(() => { setPlaces(parsed); }, [text]); // eslint-disable-line react-hooks/exhaustive-deps
+  const save = (next: string[], any = false) => onSave(joinNote(any ? "anywhere" : next.join(", "), note));
+  const add = () => {
+    const p = draft.trim();
+    if (!p) return;
+    const next = places.some((x) => x.toLowerCase() === p.toLowerCase()) ? places : [...places, p];
+    setPlaces(next);
+    setDraft("");
+    save(next);
+  };
+  return (
+    <div className="space-y-2">
+      <Switch on={anywhere} label="Anywhere" onChange={(v) => save(v ? [] : places, v)} yes="Anywhere" no="Only these places" />
+      {!anywhere && (
+        <div className="ml-2.5 flex flex-wrap items-center gap-1.5">
+          {places.map((p) => (
+            <span key={p} className="inline-flex items-center gap-1 rounded-full border border-border bg-background py-0.5 pl-2.5 pr-1 text-sm text-foreground">
+              {p}
+              <button type="button" onClick={() => { const next = places.filter((x) => x !== p); setPlaces(next); save(next); }} aria-label={`Remove ${p}`} className="inline-flex size-5 items-center justify-center rounded-full text-faint hover:bg-surface-hover hover:text-foreground">
+                <X className="size-3" />
+              </button>
+            </span>
+          ))}
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); add(); } }}
+            onBlur={add}
+            placeholder={places.length ? "Add a place" : "Add a city or country"}
+            aria-label="Add a place"
+            className="min-w-[140px] flex-1 rounded-full border border-dashed border-border bg-transparent px-3 py-0.5 text-sm outline-none placeholder:text-faint focus:border-brand/50"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Switch({ on, label, onChange, yes = "Yes", no = "No" }: { on: boolean; label: string; onChange: (v: boolean) => void; yes?: string; no?: string }) {
   return (
     <button
       type="button"
@@ -156,22 +205,49 @@ function Switch({ on, label, onChange }: { on: boolean; label: string; onChange:
       <span className={cn("relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors", on ? "bg-brand" : "bg-border")}>
         <span className={cn("inline-block size-4 rounded-full bg-white shadow-sm transition-transform", on ? "translate-x-[18px]" : "translate-x-0.5")} />
       </span>
-      {on ? "Yes" : "No"}
+      {on ? yes : no}
     </button>
   );
 }
 
 const TABS: { id: ProfileTab; label: string }[] = [
   { id: "about", label: "About you" },
-  { id: "search", label: "Job search" },
-  { id: "letters", label: "Letters & rules" },
+  { id: "want", label: "What you want" },
 ];
+
+// A field label with its description in a tooltip (ⓘ) instead of a line of grey text.
+function FieldLabel({ label, hint }: { label: string; hint?: string }) {
+  return (
+    <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+      {label}
+      {hint && (
+        <Tip label={hint} wrap side="top">
+          <button type="button" aria-label={`About ${label}: ${hint}`} className="inline-flex text-faint transition-colors hover:text-muted focus-visible:text-muted">
+            <Info className="size-3.5" />
+          </button>
+        </Tip>
+      )}
+    </p>
+  );
+}
+
+function UsedFor({ items }: { items: string[] }) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {items.map((u) => <span key={u} className="rounded-full bg-surface-hover px-2 py-0.5 text-[11px] font-medium text-muted">{u}</span>)}
+    </div>
+  );
+}
 
 export function ProfileEditor() {
   const [tab, setTab] = useState<ProfileTab>("about");
   useEffect(() => {
     const h = window.location.hash.slice(1);
-    if (TABS.some((t) => t.id === h)) setTab(h as ProfileTab);
+    // Old tab names (bookmarks from before the tabs were renamed) still work.
+    // The rules now have their own page.
+    if (h === "letters" || h === "rules") { window.location.replace("/rules"); return; }
+    const t = ({ search: "want" } as Record<string, string>)[h] ?? h;
+    if (TABS.some((x) => x.id === t)) setTab(t as ProfileTab);
   }, []);
   const pickTab = (t: ProfileTab) => { setTab(t); history.replaceState(null, "", `#${t}`); };
   const [values, setValues] = useState<Values | null>(null);
@@ -206,7 +282,7 @@ export function ProfileEditor() {
         <p className="mt-1 text-sm text-muted">What Miao knows about you. Click any value to change it; it saves on its own.</p>
       </header>
 
-      <nav role="tablist" aria-label="Profile sections" className="mt-5 flex gap-1 border-b border-border">
+      <nav role="tablist" aria-label="Profile sections" className="sticky top-0 z-20 -mx-1 mt-5 flex gap-1 border-b border-border bg-background/95 px-1 backdrop-blur">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -229,19 +305,26 @@ export function ProfileEditor() {
 
       {values && (
         <div className="mt-6 space-y-4">
-          {tab === "search" && <RolesCard />}
+          {tab === "want" && (
+            <RolesCard
+              titles={<ListValue field={ROLE_TITLES_FIELD} value={values[ROLE_TITLES_FIELD.path]} onSave={(v) => save(ROLE_TITLES_FIELD.path, v)} />}
+              titlesStatus={status[ROLE_TITLES_FIELD.path]}
+            />
+          )}
           {PROFILE_CARDS.filter((c) => c.tab === tab).map((card) => (
             <section key={card.id} className="rounded-2xl border border-border bg-surface">
-              <div className="border-b border-border px-6 py-4">
-                <h2 className="text-base font-semibold text-foreground">{card.title}</h2>
-                <p className="text-sm text-muted">{card.description}</p>
+              <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
+                <div>
+                  <h2 className="text-base font-semibold text-foreground">{card.title}</h2>
+                  <p className="text-sm text-muted">{card.description}</p>
+                </div>
+                <UsedFor items={card.usedFor} />
               </div>
               <div className="divide-y divide-border">
                 {card.fields.map((f) => (
                   <div key={f.path} className="grid grid-cols-1 gap-x-6 gap-y-1 px-6 py-3 sm:grid-cols-[200px_minmax(0,1fr)]">
                     <div className="pt-1.5">
-                      <p className="text-sm font-medium text-foreground">{f.label}</p>
-                      {f.hint && f.kind !== "list" && <p className="text-xs text-muted">{f.hint}</p>}
+                      <FieldLabel label={f.label} hint={f.hint} />
                       <StatusBadge status={status[f.path]} />
                     </div>
                     <div className="min-w-0">
@@ -249,6 +332,8 @@ export function ProfileEditor() {
                         <Switch on={values[f.path] === true} label={f.label} onChange={(v) => save(f.path, v)} />
                       ) : f.kind === "list" ? (
                         <ListValue field={f} value={values[f.path]} onSave={(v) => save(f.path, v)} />
+                      ) : f.kind === "places" ? (
+                        <PlacesValue value={values[f.path]} onSave={(v) => save(f.path, v)} />
                       ) : (
                         <TextValue field={f} value={values[f.path]} onSave={(v) => save(f.path, v)} />
                       )}
@@ -258,65 +343,20 @@ export function ProfileEditor() {
               </div>
             </section>
           ))}
-          {tab === "letters" && <RulesCard />}
         </div>
       )}
     </div>
   );
 }
 
-// ── Your rules for Miao (modes/_custom.md) ──
-function RulesCard() {
-  const [data, setData] = useState<{ groups: RuleGroups } | null>(null);
-  const [status, setStatus] = useState<Partial<Record<RuleGroupId, Status>>>({});
-  useEffect(() => {
-    fetch("/api/profile/rules", { cache: "no-store" }).then((r) => r.json()).then(setData).catch(() => {});
-  }, []);
-  const save = async (group: RuleGroupId, rules: string[]) => {
-    setStatus((s) => ({ ...s, [group]: { kind: "saving" } }));
-    try {
-      const r = await fetch("/api/profile/rules", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ group, rules }) });
-      const body = (await r.json().catch(() => ({}))) as { error?: string };
-      if (!r.ok) throw new Error(body.error ?? "Not saved.");
-      setStatus((s) => ({ ...s, [group]: { kind: "saved" } }));
-      setTimeout(() => setStatus((s) => (s[group]?.kind === "saved" ? { ...s, [group]: undefined } : s)), 2000);
-    } catch (e) {
-      setStatus((s) => ({ ...s, [group]: { kind: "error", message: e instanceof Error ? e.message : "Not saved." } }));
-    }
-  };
-  if (!data) return null;
-  return (
-    <section className="rounded-2xl border border-border bg-surface">
-      <div className="border-b border-border px-6 py-4">
-        <h2 className="text-base font-semibold text-foreground">Your rules for Miao</h2>
-        <p className="text-sm text-muted">Preferences Miao always follows, like &ldquo;keep cover letters under 300 words&rdquo; or &ldquo;never use the word passionate&rdquo;.</p>
-      </div>
-      <div className="divide-y divide-border">
-        {RULE_GROUPS.map((g) => (
-          <div key={g.id} className="grid grid-cols-1 gap-x-6 gap-y-1 px-6 py-3 sm:grid-cols-[200px_minmax(0,1fr)]">
-            <div className="pt-1.5">
-              <p className="text-sm font-medium text-foreground">{g.heading}</p>
-              <p className="text-xs text-muted">{g.hint}</p>
-              <StatusBadge status={status[g.id]} />
-            </div>
-            <div className="min-w-0">
-              <ListValue field={{ path: `rules.${g.id}`, label: g.label, kind: "list" }} value={data.groups[g.id]} onSave={(v) => save(g.id, v)} />
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 // ── Roles you're targeting (modes/_profile.md table: what scoring reads) ──
-function RolesCard() {
+function RolesCard({ titles, titlesStatus }: { titles: React.ReactNode; titlesStatus?: Status }) {
   const [doc, setDoc] = useState<RolesDoc | null>(null);
   const [error, setError] = useState("");
   const [status, setStatus] = useState<Status | undefined>();
   const saved = useRef("");
   const focusNew = useRef(false);
-  const nameRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const nameRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
 
   useEffect(() => {
     fetch("/api/profile/roles", { cache: "no-store" })
@@ -356,28 +396,38 @@ function RolesCard() {
     <section className="rounded-2xl border border-border bg-surface">
       <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
         <div>
-          <h2 className="text-base font-semibold text-foreground">Roles you&apos;re targeting</h2>
-          <p className="text-sm text-muted">Miao scores every job against these. <span className="font-medium text-foreground">Main</span> roles count most; <span className="font-medium text-foreground">Backup</span> roles still match, with a lower score.</p>
+          <h2 className="text-base font-semibold text-foreground">Roles</h2>
+          <p className="text-sm text-muted">The kinds of job you want, and how Miao finds them.</p>
         </div>
-        <StatusBadge status={status} />
+        <div className="flex flex-col items-end gap-1">
+          <UsedFor items={["Scoring", "Job search"]} />
+          <StatusBadge status={status} />
+        </div>
       </div>
       {error && <p className="px-6 py-4 text-sm text-red-800">{error}</p>}
       {!doc && !error && <div className="flex justify-center py-8 text-muted"><Loader2 className="size-5 animate-spin" /></div>}
       {doc && (
         <>
+          {/* The role list is its own inset box, so it reads as one block inside the card. */}
+          <div className="grid grid-cols-1 gap-x-6 gap-y-2 px-6 py-3 sm:grid-cols-[200px_minmax(0,1fr)]">
+            <div className="pt-1.5">
+              <FieldLabel label="Roles you're targeting" hint="Star your main roles: they score highest. Roles without a star still match, a bit lower." />
+            </div>
+            <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-surface">
           <ul className="divide-y divide-border">
             {doc.roles.map((r, i) => (
-              <li key={i} className="group grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 px-6 py-3">
+              <li key={i} className="group grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 px-2 py-1.5">
                 <div className="min-w-0">
-                  <input
-                    ref={(el) => { nameRefs.current[i] = el; }}
+                  <textarea
+                    ref={(el) => { nameRefs.current[i] = el; grow(el); }}
                     value={r.name}
-                    onChange={(e) => update(i, { name: e.target.value })}
+                    rows={1}
+                    onChange={(e) => { update(i, { name: e.target.value.replace(/\n/g, " ") }); grow(e.target); }}
                     onBlur={() => persist(doc)}
-                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); } }}
                     placeholder="Role name, e.g. Brand Marketing Intern"
                     aria-label={`Role ${i + 1}`}
-                    className={cn(editable, "font-medium")}
+                    className={cn(editable, "resize-none overflow-hidden py-1 font-semibold leading-snug")}
                   />
                   <textarea
                     value={r.axes}
@@ -388,24 +438,22 @@ function RolesCard() {
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); } }}
                     placeholder="What it's about, e.g. campaigns, content, brand"
                     aria-label={`What role ${i + 1} is about`}
-                    className={cn(editable, "resize-none overflow-hidden leading-relaxed text-muted")}
+                    className={cn(editable, "-mt-1 resize-none overflow-hidden py-0.5 text-xs leading-relaxed text-muted")}
                   />
                 </div>
                 <div className="flex items-start gap-1 pt-1">
-                  <div role="radiogroup" aria-label={`Priority of ${r.name || "role"}`} className="inline-flex rounded-lg border border-border bg-background p-0.5 text-xs">
-                    {(["primary", "secondary"] as const).map((fit) => (
-                      <button
-                        key={fit}
-                        type="button"
-                        role="radio"
-                        aria-checked={r.fit === fit}
-                        onClick={() => update(i, { fit }, true)}
-                        className={cn("rounded-md px-2.5 py-1 transition-colors", r.fit === fit ? (fit === "primary" ? "bg-brand text-brand-foreground" : "bg-surface-hover font-medium text-foreground") : "text-muted hover:text-foreground")}
-                      >
-                        {fit === "primary" ? "Main" : "Backup"}
-                      </button>
-                    ))}
-                  </div>
+                  <Tip label={r.fit === "primary" ? "Main role: scores highest. Click to make it a backup." : "Backup role: still matches, a bit lower. Click to make it a main role."} align="end">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={r.fit === "primary"}
+                      aria-label={`${r.name || "Role"}: ${r.fit === "primary" ? "main role" : "backup role"}`}
+                      onClick={() => update(i, { fit: r.fit === "primary" ? "secondary" : "primary" }, true)}
+                      className={cn("inline-flex size-7 items-center justify-center rounded-md transition-colors hover:bg-surface-hover", r.fit === "primary" ? "text-amber-500" : "text-faint hover:text-muted")}
+                    >
+                      <Star className="size-4" fill={r.fit === "primary" ? "currentColor" : "none"} />
+                    </button>
+                  </Tip>
                   <span className="inline-flex opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 max-sm:opacity-100">
                     <button type="button" disabled={i === 0} onClick={() => { const a = [...doc.roles]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; setRoles(a); }} aria-label="Move up" title="Move up" className="inline-flex size-7 items-center justify-center rounded-md text-faint hover:bg-surface-hover hover:text-foreground disabled:opacity-30"><ArrowUp className="size-3.5" /></button>
                     <button type="button" disabled={i === doc.roles.length - 1} onClick={() => { const a = [...doc.roles]; [a[i + 1], a[i]] = [a[i], a[i + 1]]; setRoles(a); }} aria-label="Move down" title="Move down" className="inline-flex size-7 items-center justify-center rounded-md text-faint hover:bg-surface-hover hover:text-foreground disabled:opacity-30"><ArrowDown className="size-3.5" /></button>
@@ -415,7 +463,7 @@ function RolesCard() {
               </li>
             ))}
           </ul>
-          <div className="border-t border-border px-6 py-2">
+          <div className="border-t border-border px-2 py-1">
             <button
               type="button"
               onClick={() => { focusNew.current = true; setDoc({ ...doc, roles: [...doc.roles, { name: "", fit: "secondary", axes: "", buys: "" }] }); }}
@@ -424,10 +472,18 @@ function RolesCard() {
               <Plus className="size-4" /> Add a role
             </button>
           </div>
+            </div>
+          </div>
           <div className="grid grid-cols-1 gap-x-6 gap-y-1 border-t border-border px-6 py-3 sm:grid-cols-[200px_minmax(0,1fr)]">
             <div className="pt-1.5">
-              <p className="text-sm font-medium text-foreground">Not interested in</p>
-              <p className="text-xs text-muted">Jobs like these get a low score.</p>
+              <FieldLabel label={ROLE_TITLES_FIELD.label} hint={ROLE_TITLES_FIELD.hint} />
+              <StatusBadge status={titlesStatus} />
+            </div>
+            <div className="min-w-0">{titles}</div>
+          </div>
+          <div className="grid grid-cols-1 gap-x-6 gap-y-1 border-t border-border px-6 py-3 sm:grid-cols-[200px_minmax(0,1fr)]">
+            <div className="pt-1.5">
+              <FieldLabel label="Not interested in" hint="Jobs like these get a low score." />
             </div>
             <textarea
               value={doc.outOfScope}

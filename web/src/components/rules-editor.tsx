@@ -2,7 +2,8 @@
 
 // Fork: the Rules page. Greta's standing instructions for Miao, one card per
 // group (Cover letters / CVs / Everything). Uses /api/profile/rules, which keeps
-// them in modes/_custom.md. Each rule is edited in place and saves on its own.
+// them in modes/_custom.md. Each rule shows as a short name plus a plain preview;
+// clicking it opens a small editor (name + what Miao should do). Saves on its own.
 import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Plus, TriangleAlert, X } from "lucide-react";
 import { JOB_PAGE_FRAME } from "@/components/page-frame";
@@ -11,19 +12,45 @@ import { cn } from "@/lib/cn";
 
 type Status = { kind: "saving" } | { kind: "saved" } | { kind: "error"; message: string };
 
-const editable =
-  "w-full resize-none overflow-hidden rounded-lg border border-transparent bg-transparent px-2.5 py-1.5 text-sm leading-relaxed text-foreground outline-none transition-colors placeholder:text-faint hover:bg-surface-hover/70 focus:border-brand/50 focus:bg-background focus:shadow-[0_0_0_3px_rgb(143_200_234/0.25)]";
+const field =
+  "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-faint focus:border-brand/50 focus:shadow-[0_0_0_3px_rgb(143_200_234/0.25)]";
 
-const EXAMPLES: Record<RuleGroupId, string> = {
-  cover: "e.g. Keep cover letters under 300 words",
-  cv: "e.g. Never put a photo on my CV",
-  all: "e.g. Never use the word “passionate”",
+const EXAMPLES: Record<RuleGroupId, { name: string; body: string }> = {
+  cover: { name: "Word limit", body: "Keep cover letters under 300 words." },
+  cv: { name: "No photo", body: "Never put a photo on my CV." },
+  all: { name: "Banned words", body: "Never use the word “passionate”." },
 };
 
 function grow(el: HTMLTextAreaElement | null) {
   if (!el) return;
   el.style.height = "auto";
   el.style.height = `${el.scrollHeight + 2}px`;
+}
+
+// "**Name (user-stated …):** body" → { name, body }. Rules without a name keep their text as the body.
+function splitRule(rule: string): { name: string; body: string } {
+  const m = rule.match(/^\*{0,2}([^:*\n]{2,60}?)\*{0,2}:\s*([\s\S]*)$/);
+  if (!m) return { name: "", body: rule };
+  return { name: m[1].replace(/\s*\((?:user-stated|user stated)[^)]*\)/i, "").trim(), body: m[2].trim() };
+}
+// Keeps a "(user-stated …)" note that was in the original name.
+function joinRule(name: string, body: string, original: string): string {
+  const note = original.match(/^\*{0,2}[^:*\n]*?(\s*\((?:user-stated|user stated)[^)]*\))/i)?.[1] ?? "";
+  const n = name.trim();
+  const b = body.trim().replace(/\s+/g, " ");
+  if (!n) return b;
+  return `${n}${note}: ${b}`;
+}
+// A readable preview: file paths, settings and LaTeX left out.
+function preview(text: string): string {
+  return text
+    .replace(/\s*\([^()]*`[^()]*\)/g, "")
+    .replace(/`[^`]*`\s*(?:→\s*`[^`]*`)?/g, (c) => (/[\\/{}=→]|\.(md|yml|json)/.test(c) ? "" : c.replace(/`/g, "")))
+    .replace(/\bfrom\s+(?=that\b)/g, "")
+    .replace(/\s+([,.;:])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .replace(/^\w/, (c) => c.toUpperCase());
 }
 
 function StatusBadge({ status }: { status?: Status }) {
@@ -37,72 +64,119 @@ function StatusBadge({ status }: { status?: Status }) {
   );
 }
 
+function RuleEditor({ rule, example, onDone, onCancel }: { rule: string; example: { name: string; body: string }; onDone: (v: string) => void; onCancel: () => void }) {
+  const start = splitRule(rule);
+  const [name, setName] = useState(start.name);
+  const [body, setBody] = useState(start.body);
+  const box = useRef<HTMLDivElement>(null);
+  // Unchanged: keep the rule exactly as written (formatting, notes and all).
+  const done = () => onDone(name.trim() === start.name && body.trim() === start.body.trim() ? rule : joinRule(name, body, rule));
+  return (
+    <div
+      ref={box}
+      className="space-y-2 rounded-xl border border-brand/40 bg-background p-3 shadow-[0_0_0_3px_rgb(143_200_234/0.2)]"
+      onBlur={(e) => { if (!box.current?.contains(e.relatedTarget as Node)) done(); }}
+      onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); onCancel(); } }}
+    >
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.currentTarget.nextElementSibling as HTMLTextAreaElement | null)?.focus(); } }}
+        placeholder={`Name, e.g. ${example.name}`}
+        aria-label="Rule name"
+        className={cn(field, "font-medium")}
+      />
+      <textarea
+        value={body}
+        rows={2}
+        ref={grow}
+        onChange={(e) => { setBody(e.target.value); grow(e.target); }}
+        onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); done(); } }}
+        placeholder={`What Miao should do, e.g. ${example.body}`}
+        aria-label="What Miao should do"
+        className={cn(field, "resize-none overflow-hidden leading-relaxed")}
+      />
+      <div className="flex items-center justify-end gap-2">
+        <span className="mr-auto text-xs text-faint">Saves when you click outside · Esc to cancel</span>
+        <button type="button" onClick={onCancel} className="rounded-lg px-3 py-1.5 text-sm text-muted hover:bg-surface-hover hover:text-foreground">Cancel</button>
+        <button type="button" onClick={done} className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-brand-foreground hover:bg-brand-200">Done</button>
+      </div>
+    </div>
+  );
+}
+
 function RuleGroupCard({ id, heading, hint, rules, onSave, status }: {
   id: RuleGroupId; heading: string; hint: string; rules: string[]; onSave: (rules: string[]) => void; status?: Status;
 }) {
   const [items, setItems] = useState(rules);
+  const [open, setOpen] = useState<number | null>(null);
   const savedJson = useRef(JSON.stringify(rules));
-  const focusIndex = useRef<number | null>(null);
-  const refs = useRef<(HTMLTextAreaElement | null)[]>([]);
-  useEffect(() => {
-    if (focusIndex.current !== null) { refs.current[focusIndex.current]?.focus(); focusIndex.current = null; }
-  }, [items.length]);
 
   const commit = (next: string[]) => {
     const clean = next.map((s) => s.trim()).filter(Boolean);
+    setItems(clean);
     const json = JSON.stringify(clean);
     if (json === savedJson.current) return;
     savedJson.current = json;
     onSave(clean);
   };
-  const remove = (i: number) => { const next = items.filter((_, k) => k !== i); setItems(next); commit(next); };
+  const remove = (i: number) => { setOpen(null); commit(items.filter((_, k) => k !== i)); };
 
   return (
     <section aria-labelledby={`rules-${id}`} className="rounded-2xl border border-border bg-surface">
       <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
         <div>
-          <h2 id={`rules-${id}`} className="text-base font-semibold text-foreground">{heading}</h2>
+          <h2 id={`rules-${id}`} className="flex items-center gap-2 text-base font-semibold text-foreground">
+            {heading}
+            <span className="rounded-full bg-surface-hover px-2 py-0.5 text-[11px] font-medium text-muted">{items.filter(Boolean).length}</span>
+          </h2>
           <p className="text-sm text-muted">{hint}</p>
         </div>
         <StatusBadge status={status} />
       </div>
-      <ul className="divide-y divide-border">
-        {items.map((rule, i) => (
-          <li key={i} className="group flex items-start gap-2 px-4 py-1.5">
-            <span className="mt-[13px] size-1.5 shrink-0 rounded-full bg-faint" aria-hidden />
-            <textarea
-              value={rule}
-              rows={1}
-              ref={(el) => { refs.current[i] = el; grow(el); }}
-              onChange={(e) => { const next = [...items]; next[i] = e.target.value; setItems(next); grow(e.target); }}
-              onBlur={() => commit(items)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); }
-                if (e.key === "Escape") (e.target as HTMLTextAreaElement).blur();
-                if (e.key === "Backspace" && rule === "") { e.preventDefault(); remove(i); }
-              }}
-              placeholder={EXAMPLES[id]}
-              aria-label={`${heading} rule ${i + 1}`}
-              className={editable}
-            />
-            <button
-              type="button"
-              onClick={() => remove(i)}
-              aria-label={`Remove rule: ${rule.slice(0, 60) || "empty"}`}
-              title="Remove rule"
-              className="mt-1 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-faint opacity-0 transition-opacity hover:bg-surface-hover hover:text-foreground focus:opacity-100 group-hover:opacity-100 max-sm:opacity-100"
-            >
-              <X className="size-3.5" />
-            </button>
-          </li>
-        ))}
-        {items.length === 0 && <li className="px-6 py-3 text-sm text-faint">No rules yet.</li>}
-      </ul>
-      <div className="border-t border-border px-4 py-2">
+
+      <div className="space-y-1.5 p-3">
+        {items.map((rule, i) => {
+          if (open === i) {
+            return (
+              <RuleEditor
+                key={i}
+                rule={rule}
+                example={EXAMPLES[id]}
+                onDone={(v) => { setOpen(null); commit(items.map((r, k) => (k === i ? v : r))); }}
+                onCancel={() => { setOpen(null); if (!rule.trim()) setItems(items.filter((_, k) => k !== i)); }}
+              />
+            );
+          }
+          const { name, body } = splitRule(rule);
+          return (
+            <div key={i} className="group flex items-start gap-2 rounded-xl border border-border bg-background px-4 py-3 transition-colors hover:border-brand/30">
+              <button type="button" onClick={() => setOpen(i)} className="min-w-0 flex-1 text-left" aria-label={`Edit rule ${name || body.slice(0, 40)}`}>
+                {name && <p className="text-sm font-medium text-foreground">{name}</p>}
+                <p className={cn("line-clamp-2 text-sm text-muted", !name && "text-foreground")}>{preview(body)}</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => remove(i)}
+                aria-label={`Remove rule ${name || body.slice(0, 40)}`}
+                title="Remove rule"
+                className="-mr-1 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-faint opacity-0 transition-opacity hover:bg-surface-hover hover:text-foreground focus:opacity-100 group-hover:opacity-100 max-sm:opacity-100"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          );
+        })}
+
+        {items.length === 0 && open === null && (
+          <p className="px-1 py-2 text-sm text-faint">No rules yet. For example: &ldquo;{EXAMPLES[id].body}&rdquo;</p>
+        )}
+
         <button
           type="button"
-          onClick={() => { focusIndex.current = items.length; setItems([...items, ""]); }}
-          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
+          onClick={() => { setItems([...items, ""]); setOpen(items.length); }}
+          className="flex w-full items-center gap-1.5 rounded-xl border border-dashed border-border px-4 py-2.5 text-sm text-muted transition-colors hover:border-brand/40 hover:text-foreground"
         >
           <Plus className="size-4" /> Add a rule
         </button>

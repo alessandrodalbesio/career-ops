@@ -4,8 +4,10 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
-export function Tip({ label, side = "bottom", align = "center", children, className }: {
+export function Tip({ label, side = "bottom", align = "center", wrap = false, children, className }: {
   label: string;
+  /** Long text: wraps inside a fixed-width bubble instead of one line. */
+  wrap?: boolean;
   side?: "bottom" | "top";
   /** "end" pins the bubble to the control's right edge (for controls near a clipping edge). */
   align?: "center" | "end";
@@ -19,7 +21,8 @@ export function Tip({ label, side = "bottom", align = "center", children, classN
         role="tooltip"
         className={cn(
           align === "end" ? "right-0" : "left-1/2 -translate-x-1/2",
-          "pointer-events-none absolute z-[60] whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-[11px] font-medium text-background opacity-0 shadow-md transition-all duration-150",
+          wrap ? "w-max max-w-72 whitespace-normal leading-snug" : "whitespace-nowrap",
+          "pointer-events-none absolute z-[60] rounded-md bg-foreground px-2 py-1 text-[11px] font-medium text-background opacity-0 shadow-md transition-all duration-150",
           "group-hover/tip:opacity-100 group-hover/tip:delay-300 group-has-[:focus-visible]/tip:opacity-100",
           side === "bottom" ? "top-full mt-1.5 -translate-y-0.5 group-hover/tip:translate-y-0" : "bottom-full mb-1.5 translate-y-0.5 group-hover/tip:translate-y-0",
         )}
