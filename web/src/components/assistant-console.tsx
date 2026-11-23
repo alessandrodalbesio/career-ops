@@ -6,7 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Miao } from "@/components/miao";
 import { Tip } from "@/components/ui/tip";
-import { ArrowUp, X, Loader2, Settings, ArrowUpRight, Sparkles, Maximize2, Minimize2, ChevronDown, Check, Trash2, Pencil, SquarePen } from "lucide-react";
+import { ArrowUp, X, Loader2, Settings, ArrowUpRight, Sparkles, Maximize2, Minimize2, ChevronDown, Check, Trash2, Pencil, SquarePen, Paperclip, FileText } from "lucide-react";
 import { useJobs } from "@/components/jobs/job-store";
 import { usePipeline } from "@/components/pipeline/pipeline-provider";
 import { useApply } from "@/components/apply/apply-provider";
@@ -189,6 +189,25 @@ export function AssistantConsole() {
   const writerId = useRef("");
   const saveSeq = useRef(0);
   const [input, setInput] = useState("");
+  // Fork: files attached to the next message (uploaded to the data folder first).
+  type Attachment = { id: string; name: string; path?: string; error?: string };
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadFiles = (files: FileList | File[]) => {
+    for (const file of Array.from(files).slice(0, 10)) {
+      const id = crypto.randomUUID();
+      setAttachments((a) => [...a, { id, name: file.name }]);
+      const form = new FormData();
+      form.append("file", file);
+      fetch("/api/assistant/upload", { method: "POST", body: form })
+        .then(async (r) => {
+          const body = (await r.json().catch(() => ({}))) as { path?: string; error?: string };
+          setAttachments((a) => a.map((x) => (x.id === id ? (r.ok && body.path ? { ...x, path: body.path } : { ...x, error: body.error ?? "Upload failed" }) : x)));
+        })
+        .catch(() => setAttachments((a) => a.map((x) => (x.id === id ? { ...x, error: "Upload failed" } : x))));
+    }
+  };
   const [busy, setBusy] = useState(false);
   const [requestFeedback, setRequestFeedback] = useState<RequestFeedback | null>(null);
   const [announcement, setAnnouncement] = useState("");
@@ -774,9 +793,15 @@ export function AssistantConsole() {
   }
 
   async function send(forced?: string) {
-    const text = (forced ?? input).trim();
-    if (!text || busy || !cliId || !chatReady || chatPending) return;
-    if (forced === undefined) setInput("");
+    // Attachments go with what the user typed, not with forced (action) sends.
+    const ready = forced === undefined ? attachments.filter((a) => a.path) : [];
+    if (forced === undefined && attachments.some((a) => !a.path && !a.error)) return; // still uploading
+    const typed = (forced ?? input).trim();
+    if ((!typed && !ready.length) || busy || !cliId || !chatReady || chatPending) return;
+    const text = ready.length
+      ? `${typed || "Have a look at the attached file."}\n\n📎 ${ready.map((a) => a.name).join(", ")}`
+      : typed;
+    if (forced === undefined) { setInput(""); setAttachments([]); }
     const history = messages.filter((m) => msgText(m) && msgText(m) !== GREETING).map((m) => ({ role: m.role, content: msgText(m) }));
     const next: Msg[] = [...messages, { role: "user", parts: [{ type: "text", text }] }, { role: "assistant", parts: [{ type: "text", text: "" }] }];
     messagesRef.current = next;
@@ -794,7 +819,7 @@ export function AssistantConsole() {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, cliId, history, pageContext: describePage(pathname) + pipelineContext() + applyContext() }),
+        body: JSON.stringify({ message: text, cliId, history, pageContext: describePage(pathname) + pipelineContext() + applyContext(), attachments: ready.map((a) => ({ name: a.name, path: a.path })) }),
       });
       if (!res.ok || !res.body) {
         failed = true;
@@ -1211,8 +1236,50 @@ export function AssistantConsole() {
             <label htmlFor={inputId} className="sr-only">Message to assistant</label>
             <p id={inputHelpId} className="sr-only">Enter sends your message. Shift+Enter adds a new line.</p>
             {/* Fork: one composer box, send button inside it. */}
-            <div className="flex items-end gap-2 rounded-2xl border border-border bg-surface py-1.5 pl-3 pr-1.5 shadow-sm transition-colors focus-within:border-brand-text/40">
+            <div
+              onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragOver(true); } }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); setDragOver(false); uploadFiles(e.dataTransfer.files); } }}
+              className={cn("rounded-2xl border bg-surface shadow-sm transition-colors focus-within:border-brand-text/40", dragOver ? "border-brand-text/60 bg-brand-soft/40" : "border-border")}
+            >
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 px-2.5 pt-2">
+                {attachments.map((a) => (
+                  <span
+                    key={a.id}
+                    title={a.error ?? a.name}
+                    className={cn("inline-flex max-w-[220px] items-center gap-1.5 rounded-lg border px-2 py-1 text-xs", a.error ? "border-red-300 bg-red-50 text-red-800" : "border-border bg-background text-foreground")}
+                  >
+                    {!a.path && !a.error ? <Loader2 className="size-3.5 shrink-0 animate-spin text-muted" /> : <FileText className="size-3.5 shrink-0 text-muted" />}
+                    <span className="truncate">{a.error ? `${a.name}: ${a.error}` : a.name}</span>
+                    <button type="button" aria-label={`Remove ${a.name}`} onClick={() => setAttachments((x) => x.filter((y) => y.id !== a.id))} className="shrink-0 text-faint hover:text-foreground">
+                      <X className="size-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex items-end gap-1.5 py-1.5 pl-1.5 pr-1.5">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.md,.csv,.json,.yml,.yaml,.html,.tex"
+                className="hidden"
+                onChange={(e) => { if (e.target.files?.length) uploadFiles(e.target.files); e.target.value = ""; }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!cliId}
+                aria-label="Attach a file"
+                title="Attach a file (PDF, image or text)"
+                className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-hover hover:text-foreground disabled:opacity-40"
+              >
+                <Paperclip className="size-4" />
+              </button>
               <textarea
+                onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); uploadFiles(e.clipboardData.files); } }}
                 id={inputId}
                 aria-describedby={inputHelpId}
                 ref={inputRef}
@@ -1235,15 +1302,16 @@ export function AssistantConsole() {
                   if (document.activeElement === e.currentTarget) inputRef.current?.focus();
                   void send();
                 }}
-                disabled={busy || chatPending || !chatReady || !input.trim() || !cliId}
+                disabled={busy || chatPending || !chatReady || !(input.trim() || attachments.some((a) => a.path)) || attachments.some((a) => !a.path && !a.error) || !cliId}
                 className={cn(
                   "inline-flex size-8 shrink-0 items-center justify-center rounded-full transition-colors",
-                  input.trim() && !busy ? "bg-brand text-brand-foreground hover:bg-brand-200" : "bg-surface-hover text-faint",
+                  (input.trim() || attachments.some((a) => a.path)) && !busy ? "bg-brand text-brand-foreground hover:bg-brand-200" : "bg-surface-hover text-faint",
                 )}
                 aria-label="Send"
               >
                 {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
               </button>
+            </div>
             </div>
             {/* Fork: the "Processing… / Reply ready." line is kept for screen readers only. */}
             {feedbackText && <p id={feedbackId} className="sr-only">{feedbackText}</p>}
