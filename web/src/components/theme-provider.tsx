@@ -13,6 +13,9 @@ type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
+// Fork: the page is always light (see THEME_SCRIPT in app/layout.tsx).
+const ALWAYS_LIGHT = true;
+
 function currentTheme(): Theme {
   if (typeof document === "undefined") return "dark";
   return document.documentElement.classList.contains("dark") ? "dark" : "light";
@@ -37,7 +40,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // Keep the server and first client snapshots identical. The bootstrap script
   // establishes the document class before paint; the effect adopts it after
   // hydration without forcing React to rebuild theme-dependent controls.
-  const [theme, setThemeState] = useState<Theme>("dark");
+  const [theme, setThemeState] = useState<Theme>(ALWAYS_LIGHT ? "light" : "dark");
 
   useEffect(() => {
     const initial = currentTheme();
@@ -45,6 +48,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const onSystemTheme = () => {
+      // Fork: Miao stays light; an OS switch to dark mode must not flip the page.
+      if (ALWAYS_LIGHT) return;
       // A stored choice wins over later OS changes. With no stored choice, keep
       // the bootstrap behavior live when the system preference changes.
       if (savedTheme()) return;
