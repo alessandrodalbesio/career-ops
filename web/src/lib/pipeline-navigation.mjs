@@ -108,8 +108,12 @@ export function pipelineTabCounts(rows) {
  */
 export function pipelineTab(raw) {
   const value = String((Array.isArray(raw) ? raw[0] : raw) ?? "").toUpperCase();
-  return PIPELINE_TABS.find((t) => t === value) ?? "INBOX";
+  // Fork: ALL is the default tab (INBOX is hidden from the strip).
+  return PIPELINE_TABS.find((t) => t === value) ?? "ALL";
 }
+
+/** Fork: the tabs shown in the Pipeline strip, in order. Other tabs stay reachable by URL. */
+export const SHOWN_PIPELINE_TABS = new Set(["ALL", "EVALUATED", "APPLIED", "INTERVIEW", "OFFER", "HIRED", "REJECTED", "DISCARDED"]);
 
 /**
  * How far the tab strip should scroll so the selected tab is inside it.

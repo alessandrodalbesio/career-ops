@@ -1,4 +1,4 @@
-import { LayoutDashboard, Compass, ListChecks, Send, Radar, BarChart3, FileText, Files, Settings, CalendarClock, FolderOpen } from "lucide-react";
+import { House, Compass, ListChecks, Send, Radar, BarChart3, FileText, Files, Settings, CalendarClock, FolderOpen } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 
 // Single source of truth for the app's primary destinations — shared by the
@@ -11,7 +11,7 @@ export type NavItem = {
 };
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Today", icon: LayoutDashboard },
+  { href: "/", label: "Home", icon: House },
   { href: "/explore", label: "Explore", icon: Compass, chip: "New" },
   { href: "/scheduled-scans", label: "Scheduled scans", icon: CalendarClock },
   { href: "/pipeline", label: "Pipeline", icon: ListChecks },
@@ -24,8 +24,12 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/config", label: "Config", icon: Settings },
 ];
 
+// Fork: pages hidden from the menus (sidebar, mobile, command palette). The routes still exist.
+const HIDDEN_HREFS = new Set(["/explore", "/scheduled-scans", "/followups", "/portals", "/analytics", "/documents", "/output", "/config"]);
+
 export function visibleNavItems(followupsEnabled: boolean): NavItem[] {
-  return followupsEnabled ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.href !== "/followups");
+  const items = NAV_ITEMS.filter((item) => !HIDDEN_HREFS.has(item.href));
+  return followupsEnabled ? items : items.filter((item) => item.href !== "/followups");
 }
 
 export function isActivePath(href: string, pathname: string): boolean {

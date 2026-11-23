@@ -78,7 +78,81 @@ export function pillTone(j: Job): keyof typeof TONE {
   return "muted";
 }
 
+// Fork: friendlier names for the sidebar tray.
+const KIND_LABEL: Record<string, { running: string; done: string; failed: string }> = {
+  evaluate: { running: "Evaluating job", done: "Job evaluated", failed: "Evaluation stopped" },
+  pdf: { running: "Writing tailored CV", done: "Tailored CV ready", failed: "CV not generated" },
+  cover: { running: "Writing cover letter", done: "Cover letter ready", failed: "Cover letter not written" },
+};
+function siteOf(text?: string): string {
+  if (!text) return "";
+  try { return new URL(text).hostname.replace(/^www\./, ""); } catch { return text; }
+}
+
+/** Fork: compact sidebar card: icon, friendly title, site / company, current step, time. */
+function TrayCard({ job }: { job: Job }) {
+  const gate = evaluationGateForJob(job);
+  const toneKey = pillTone(job);
+  const tone = TONE[toneKey];
+  const running = job.status === "running";
+  const elapsed = useElapsed(running, job.startedAt);
+  const rawLast = job.steps[job.steps.length - 1]?.label;
+  const step = rawLast && !isFencingNotice(rawLast) ? humanizeStep(rawLast) : undefined;
+  const names = job.kind ? KIND_LABEL[job.kind] : undefined;
+  const title = names
+    ? (running ? names.running : job.status === "done" ? names.done : job.status === "error" ? names.failed : job.title.split(" · ")[0])
+    : job.title;
+  const detail = job.kind === "evaluate" ? siteOf(job.input || job.subtitle) : (job.title.split(" · ")[1] ?? job.subtitle ?? "");
+  const hasScore = job.status === "done" && job.result?.score != null;
+  const errorHint = jobErrorHint(job);
+  const line = gate?.message || errorHint?.text || (running ? step ?? "Starting…" : job.status === "done" ? job.result?.summary : jobStateLabel(job));
+
+  return (
+    <div role="group" aria-label={workerIdentity(job)} className="flex gap-2.5">
+      <span className={cn(
+        "mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-lg",
+        running ? "bg-brand-soft text-brand-text" : job.status === "error" ? "bg-red-500/10 text-red-500" : gate || job.status === "gated" ? "bg-amber-500/10 text-amber-600" : "bg-emerald-500/10 text-emerald-600",
+      )}>
+        {running ? <Loader2 className="size-3.5 animate-spin" />
+          : gate || job.status === "gated" ? <CirclePause className="size-3.5" />
+          : job.status === "error" ? <AlertTriangle className="size-3.5" />
+          : <Check className="size-3.5" />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="truncate text-xs font-medium text-foreground">{title}</span>
+          {hasScore ? (
+            <span className={cn("ml-auto shrink-0 rounded px-1 text-[10px] font-semibold tabular-nums", tone.chip)}>{job.result!.score}</span>
+          ) : running ? (
+            <span className="ml-auto shrink-0 text-[10px] tabular-nums text-faint">{fmtElapsed(elapsed)}</span>
+          ) : null}
+        </div>
+        {detail && <div className="truncate text-[11px] text-muted">{detail}</div>}
+        {line && <div className={cn("mt-0.5 truncate text-[10px]", errorHint || gate ? "text-amber-700 dark:text-amber-400" : "text-faint")}>{line}</div>}
+        {running && (
+          <div className="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-surface-hover">
+            <div className="job-indeterminate h-full w-full" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function WorkerCard({
+  job,
+  variant = "tray",
+  trailing,
+}: {
+  job: Job;
+  variant?: "tray" | "inline";
+  trailing?: React.ReactNode;
+}) {
+  if (variant === "tray" && trailing == null) return <TrayCard job={job} />;
+  return <WorkerCardFull job={job} variant={variant} trailing={trailing} />;
+}
+
+function WorkerCardFull({
   job,
   variant = "tray",
   trailing,

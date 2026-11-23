@@ -12,12 +12,13 @@ export const inter = localFont({
   display: "swap",
 });
 
-// Editorial display — Instrument Serif. Regular and italic mirror the docs
-// typography while remaining fully local at build and runtime.
+// Fork restyle: the "display" font is Inter too (the serif headlines looked
+// out of place). Export names are kept so the 16 components importing them
+// need no change and upstream merges stay small.
 export const instrumentSerif = localFont({
   src: [{
-    path: "../assets/fonts/instrument-serif/InstrumentSerif-Latin-Regular.woff2",
-    weight: "400",
+    path: "../assets/fonts/inter/Inter-Latin-Variable.woff2",
+    weight: "100 900",
     style: "normal",
   }],
   variable: "--font-instrument-serif",
@@ -26,9 +27,9 @@ export const instrumentSerif = localFont({
 
 export const instrumentSerifItalic = localFont({
   src: [{
-    path: "../assets/fonts/instrument-serif/InstrumentSerif-Latin-Italic.woff2",
-    weight: "400",
-    style: "italic",
+    path: "../assets/fonts/inter/Inter-Latin-Variable.woff2",
+    weight: "100 900",
+    style: "normal",
   }],
   variable: "--font-instrument-serif-italic",
   display: "swap",

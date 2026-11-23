@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { CompanyLogo } from "@/components/company-logo";
 import { CANONICAL_STATES, scoreNum, scoreTone } from "@/lib/format";
 import { StatusSelect } from "@/components/status-select";
+import { CvCell } from "@/components/pipeline/cv-cell";
+import { Tip } from "@/components/ui/tip";
 import { applicationKey, applySavedStatus, saveStatuses } from "@/lib/pipeline-status.mjs";
 import { InboxTriage } from "@/components/inbox/inbox-triage";
 import { cn } from "@/lib/cn";
@@ -17,7 +19,7 @@ import { PipelineTableRowsSkeleton } from "@/components/page-loading-skeletons";
 import { startRouteProgress } from "@/components/route-progress";
 import { sortRows } from "@/lib/core/pipeline-sort.mjs";
 import { PageFrame } from "@/components/page-frame";
-import { PIPELINE_TABS, pipelineQuery, pipelineTab, pipelineTabCounts, rowOnPipelineTab, tabStripScrollLeft, trackerDetailHref } from "@/lib/pipeline-navigation.mjs";
+import { PIPELINE_TABS, SHOWN_PIPELINE_TABS, pipelineQuery, pipelineTab, pipelineTabCounts, rowOnPipelineTab, tabStripScrollLeft, trackerDetailHref } from "@/lib/pipeline-navigation.mjs";
 import { isSearchOnlyWrite, queryWithLiveSearch } from "@/lib/list-search-sync.mjs";
 import { useListSearch } from "@/lib/use-list-search";
 import { COMPARE_MAX } from "@/lib/pipeline-compare.mjs";
@@ -28,7 +30,7 @@ import { clearHeldSaves, excludeInFlightStatusRows, offscreenStatusFailures, red
 import { moveCursor, typingFromTarget } from "@/lib/inbox-keys.mjs";
 import { rangeKeys, selectionAfterFailedSave, trackerCommand } from "@/lib/tracker-keys.mjs";
 import { appliedPromptStale, appliedSelectionToken, appliedWriteAllowed } from "@/lib/applied-confirm.mjs";
-import { SCORE_FLOORS, keepsPendingNames, keepsStoredNames, normalizeView, omissionAfterAttempt, parseViews, removeView, savedViewPayload, upsertView, viewUpdates, viewsForMutation } from "@/lib/pipeline-views.mjs";
+import { keepsPendingNames, keepsStoredNames, normalizeView, omissionAfterAttempt, parseViews, removeView, savedViewPayload, upsertView, viewUpdates, viewsForMutation } from "@/lib/pipeline-views.mjs";
 import { trackerEmptyPresentation, trackerEmptyState, type TrackerEmptyState } from "@/lib/tracker-empty-state.mjs";
 import { trackerEmptyMessage } from "@/lib/tracker-empty.mjs";
 import { listEntrySync } from "@/lib/history-back.mjs";
@@ -119,7 +121,7 @@ export function PipelineView({
         return true;
       }
       if (Object.prototype.hasOwnProperty.call(updates, "tab")) {
-        const nextTab = String(updates.tab ?? "INBOX").toUpperCase();
+        const nextTab = String(updates.tab ?? "ALL").toUpperCase();
         if ((PIPELINE_TABS as readonly string[]).includes(nextTab)) setPendingTab(nextTab as Tab);
       }
       startRouteProgress();
@@ -443,7 +445,9 @@ export function PipelineView({
   const mountedRows = filtered.slice(span.start, span.end);
   const offscreenFailures = offscreenStatusFailures(heldSaves, mountedRows.map((row) => applicationKey(row)));
   // The checkbox, the sortable columns and the resume column.
-  const columnCount = SORT_KEYS.length + 2;
+  // Fork: the tracker # column is hidden, and Status shows only on ALL (on a status tab every row has that status).
+  const showStatus = tab === "ALL" || tab === "OTHER";
+  const columnCount = SORT_KEYS.length + 1 - (showStatus ? 0 : 1);
   // Same test as the selection bar's selectedRows.length > 0.
   const hasSelection = filtered.some((r) => selected.has(applicationKey(r)));
 
@@ -694,77 +698,10 @@ export function PipelineView({
 
   return (
     <PageFrame width="wide">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight text-landing">Pipeline</h1>
-          <p className="mt-1 text-sm text-muted">
-            <span className="tabular-nums">{inboxCount}</span> in inbox ·{" "}
-            <span className="tabular-nums">{visibleApplications.length}</span> tracked
-          </p>
-        </div>
-        {/* the tracker has its own search; the inbox brings its own facet filters */}
-        {visibleTab !== "INBOX" && (
-          <div className="flex items-center gap-2">
-            <div className="relative w-64 max-w-[40vw]">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" />
-              <input
-                ref={searchInput}
-                type="search"
-                aria-label="Search applications"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape" && q) {
-                    e.preventDefault();
-                    setQ("");
-                  }
-                }}
-                placeholder="Search company or role…"
-                className="w-full rounded-md border border-border bg-surface/60 py-2 pl-9 pr-9 text-sm outline-none transition-colors placeholder:text-faint focus:border-brand/50 focus-visible:ring-2 focus-visible:ring-brand/40 [&::-webkit-search-cancel-button]:appearance-none"
-              />
-              {q && (
-                <button
-                  type="button"
-                  aria-label="Clear search"
-                  onClick={clearSearch}
-                  className="absolute right-1.5 top-1/2 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded text-faint transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand/40"
-                >
-                  <X aria-hidden="true" className="size-4" />
-                </button>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={downloadCsv}
-              disabled={isPending || filtered.length === 0}
-              title={`Download the ${filtered.length} row${filtered.length === 1 ? "" : "s"} shown as a CSV file`}
-              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-surface/60 px-3 py-2 text-sm text-muted transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-50 max-sm:min-h-[44px] max-sm:min-w-[44px] max-sm:justify-center max-sm:px-0"
-            >
-              <Download aria-hidden="true" className="size-4" />
-              <span className="max-sm:sr-only">Download CSV</span>
-            </button>
-          </div>
-        )}
-      </div>
+      <h1 className="font-display text-2xl tracking-tight text-landing">Pipeline</h1>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        {visibleTab !== "INBOX" && <label className="inline-flex items-center gap-2 text-xs text-muted">
-          Score
-          <select
-            aria-label="Minimum score"
-            value={minFilter ?? ""}
-            onChange={(event) => setParams({ min: event.target.value === "" ? null : event.target.value })}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-sm text-foreground"
-          >
-            <option value="">Any</option>
-            {minFilter != null && !SCORE_FLOORS.includes(minFilter) && (
-              <option value={String(minFilter)}>{minFilter}+</option>
-            )}
-            {SCORE_FLOORS.map((floor) => (
-              <option key={floor} value={String(floor)}>{floor.toFixed(1)}+</option>
-            ))}
-          </select>
-        </label>}
+      {/* Fork: saved-views row only when there is something to show. */}
+      {(views.length > 0 || naming || viewError || removalWarning) && <div className="mt-4 flex flex-wrap items-center gap-2">
         {views.map((view) => {
           const active = view.tab === tab && view.q === q && view.min === minFilter && view.sort === sort.key && view.dir === sort.dir;
           return (
@@ -796,18 +733,15 @@ export function PipelineView({
             <button type="submit" className="text-xs font-medium text-brand-text">Save</button>
             <button type="button" onClick={() => { setNaming(false); setDraftName(""); setViewError(""); }} className="text-xs text-muted">Cancel</button>
           </form>
-        ) : (
-          <button type="button" onClick={() => { setViewError(""); setNaming(true); }} className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted hover:text-foreground">
-            Save view
-          </button>
-        )}
+        ) : null /* Fork: the "Save view" button is removed; existing saved views still show above. */}
         {viewError && <span role="alert" className="text-xs text-red-500">{viewError}</span>}
         {removalWarning && <span role="alert" className="text-xs text-red-500">{removalWarning}</span>}
-      </div>
+      </div>}
 
-      {/* tabs */}
-      <div className="mt-6 flex min-w-0 flex-nowrap gap-1 overflow-x-auto overflow-y-hidden border-b border-border">
-        {PIPELINE_TABS.map((t) => {
+      {/* tabs + toolbar (Fork: search and CSV sit on the right of the tab row) */}
+      <div className="mt-5 flex items-end gap-3 border-b border-border">
+      <div className="flex min-w-0 flex-1 flex-nowrap gap-1 overflow-x-auto overflow-y-hidden">
+        {PIPELINE_TABS.filter((t) => SHOWN_PIPELINE_TABS.has(t)).map((t) => {
           const count =
             t === "INBOX"
               ? inboxCount
@@ -821,7 +755,7 @@ export function PipelineView({
               type="button"
               ref={tab === t ? activeTab : undefined}
               aria-pressed={visibleTab === t}
-              onClick={() => setParams({ tab: t === "INBOX" ? null : t })}
+              onClick={() => setParams({ tab: t === "ALL" ? null : t })}
               className={cn(
                 // gap-1, not a whitespace text node: flex containers drop
                 // whitespace-only anonymous items, which rendered "INBOX0".
@@ -831,10 +765,58 @@ export function PipelineView({
                   : "border-transparent text-muted hover:text-foreground",
               )}
             >
-              {t} <span className="text-faint tabular-nums">{count}</span>
+              {t}
+              <span className={cn(
+                "min-w-[1.25rem] rounded-full px-1.5 py-px text-center text-[10px] font-semibold tabular-nums transition-colors",
+                visibleTab === t ? "bg-brand text-brand-foreground" : "bg-surface-hover text-muted",
+              )}>{count}</span>
             </button>
           );
         })}
+      </div>
+      {visibleTab !== "INBOX" && (
+        <div className="flex shrink-0 items-center gap-1.5 pb-1.5">
+          <div className="relative w-56 max-w-[40vw]">
+            <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" />
+            <input
+              ref={searchInput}
+              type="search"
+              aria-label="Search applications"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && q) {
+                  e.preventDefault();
+                  setQ("");
+                }
+              }}
+              placeholder="Search…"
+              className="h-8 w-full rounded-lg border border-border bg-surface pl-8 pr-8 text-sm outline-none transition-colors placeholder:text-faint focus:border-brand-text/40 focus-visible:ring-2 focus-visible:ring-brand/30 [&::-webkit-search-cancel-button]:appearance-none"
+            />
+            {q && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={clearSearch}
+                className="absolute right-1 top-1/2 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded text-faint transition-colors hover:text-foreground"
+              >
+                <X aria-hidden="true" className="size-3.5" />
+              </button>
+            )}
+          </div>
+          <Tip label={`Download ${filtered.length} row${filtered.length === 1 ? "" : "s"} as CSV`} align="end">
+            <button
+              type="button"
+              onClick={downloadCsv}
+              disabled={isPending || filtered.length === 0}
+              aria-label="Download CSV"
+              className="inline-flex size-8 items-center justify-center rounded-lg border border-border bg-surface text-muted transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 max-sm:size-11"
+            >
+              <Download aria-hidden="true" className="size-4" />
+            </button>
+          </Tip>
+        </div>
+      )}
       </div>
 
       <p role="status" className="sr-only">{announcement}</p>
@@ -932,10 +914,6 @@ export function PipelineView({
         </div>
       )}
 
-      {visibleTab !== "INBOX" && (
-        <p className="mt-2 text-xs text-faint">j and k move. 1 Evaluated, 2 Applied, 3 Responded, 4 Interview, 5 Offer, 6 Rejected, 7 Discarded, 8 SKIP. Shift-click selects the rows in between.</p>
-      )}
-
       {visibleTab === "INBOX" ? (
         /* ── Inbox: the triage surface (Abundance → Triage → Shortlist → Score) ── */
         <>
@@ -964,11 +942,16 @@ export function PipelineView({
            but a table too wide for the viewport can now be scrolled to instead
            of being silently cut off. min-w keeps the columns readable rather
            than letting w-full crush them on a phone. */
-        <div className="mt-4 overflow-x-auto rounded-2xl border border-border">
+        <div className="mt-4 overflow-x-auto rounded-lg border border-border">
           <table
             aria-label="Tracked applications"
             aria-rowcount={filtered.length + 1}
-            className="w-full min-w-[44rem] text-sm min-[1440px]:table-fixed min-[1440px]:[&_th:nth-child(1)]:w-11 min-[1440px]:[&_th:nth-child(2)]:w-[4.5rem] min-[1440px]:[&_th:nth-child(3)]:w-[26%] min-[1440px]:[&_th:nth-child(4)]:w-[32%] min-[1440px]:[&_th:nth-child(5)]:w-[5.5rem] min-[1440px]:[&_th:nth-child(6)]:w-[14rem] min-[1440px]:[&_th:nth-child(7)]:w-[6.75rem] min-[1440px]:[&_th:nth-child(8)]:w-[4.75rem]"
+            className={cn(
+              "w-full min-w-[44rem] text-sm min-[1440px]:table-fixed min-[1440px]:[&_th:nth-child(1)]:w-11 min-[1440px]:[&_th:nth-child(4)]:w-[5.5rem]",
+              showStatus
+                ? "min-[1440px]:[&_th:nth-child(2)]:w-[27%] min-[1440px]:[&_th:nth-child(3)]:w-[33%] min-[1440px]:[&_th:nth-child(5)]:w-[9.5rem] min-[1440px]:[&_th:nth-child(6)]:w-[6.75rem] min-[1440px]:[&_th:nth-child(7)]:w-[8.5rem]"
+                : "min-[1440px]:[&_th:nth-child(2)]:w-[30%] min-[1440px]:[&_th:nth-child(3)]:w-[38%] min-[1440px]:[&_th:nth-child(5)]:w-[6.75rem] min-[1440px]:[&_th:nth-child(6)]:w-[8.5rem]",
+            )}
           >
             <thead className="bg-surface/60 text-left text-xs uppercase tracking-wide text-faint">
               <tr aria-rowindex={1}>
@@ -980,7 +963,7 @@ export function PipelineView({
                     onChange={() => setSelected(allSelected ? new Set() : new Set(filteredKeys))}
                   />
                 </th>
-                {SORT_KEYS.map((k) => (
+                {SORT_KEYS.filter((k) => k !== "tracker" && (showStatus || k !== "status")).map((k) => (
                   <th
                     key={k}
                     aria-sort={sort.key === k ? (sort.dir === 1 ? "ascending" : "descending") : "none"}
@@ -1022,6 +1005,7 @@ export function PipelineView({
                     selected={selected.has(key)}
                     isCursor={cursor === index}
                     hasCv={hasCv.has(r.n)}
+                    showStatus={showStatus}
                     detailQuery={detailQuery}
                     heldSave={heldSaves.get(key)}
                     onToggle={toggleRow}
@@ -1081,6 +1065,7 @@ const TrackerRow = memo(function TrackerRow({
   selected,
   isCursor,
   hasCv,
+  showStatus,
   detailQuery,
   heldSave,
   onToggle,
@@ -1094,6 +1079,7 @@ const TrackerRow = memo(function TrackerRow({
   selected: boolean;
   isCursor: boolean;
   hasCv: boolean;
+  showStatus: boolean;
   detailQuery: string;
   heldSave?: { phase: "pending"; status: string } | { phase: "failed"; error: string };
   onToggle: (key: string, shift: boolean) => void;
@@ -1125,11 +1111,6 @@ const TrackerRow = memo(function TrackerRow({
           }}
         />
       </td>
-      <td className="whitespace-nowrap px-4 py-3 font-medium tabular-nums">
-        <Link href={detailHref} tabIndex={-1} onPointerDown={arm} onClick={open} className="transition-colors group-hover:text-brand-text">
-          #{r.n}
-        </Link>
-      </td>
       <td className="px-4 py-3 font-medium">
         <Link href={detailHref} onPointerDown={arm} onClick={open} className="flex items-center gap-2.5 min-w-0 transition-colors group-hover:text-brand-text min-[1440px]:w-full">
           <CompanyLogo name={company.logoName} size={20} />
@@ -1159,7 +1140,7 @@ const TrackerRow = memo(function TrackerRow({
       <td className="px-4 py-3">
         <Badge tone={scoreTone(r.score)}>{r.score || "—"}</Badge>
       </td>
-      <td className="whitespace-nowrap px-4 py-3 text-muted">
+      {showStatus && <td className="whitespace-nowrap px-4 py-3 text-muted">
         <StatusSelect
           n={r.n}
           current={r.status}
@@ -1169,22 +1150,10 @@ const TrackerRow = memo(function TrackerRow({
           onHeldSave={(event) => onHeldSave(key, r.n, event)}
           onSaved={(status, restoreFocus) => onSaved(r, status, restoreFocus)}
         />
-      </td>
+      </td>}
       <td className="hidden whitespace-nowrap px-4 py-3 text-faint tabular-nums lg:table-cell">{r.date}</td>
       <td className="whitespace-nowrap px-4 py-3">
-        {hasCv ? (
-          <a
-            href={`/api/cv-pdf?application=${encodeURIComponent(r.n)}`}
-            target="_blank"
-            rel="noreferrer"
-            title="Open the tailored CV PDF"
-            className="inline-flex items-center gap-1.5 text-brand-text hover:underline"
-          >
-            <FileText aria-hidden="true" className="size-3.5" /> PDF
-          </a>
-        ) : (
-          <span className="text-faint">—</span>
-        )}
+        <CvCell n={r.n} company={company.label} hasCv={hasCv} status={r.status} />
       </td>
     </tr>
   );

@@ -2,8 +2,24 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Pencil, X } from "lucide-react";
-import { CANONICAL_STATES, statusDot } from "@/lib/format";
+import { Check, ChevronDown } from "lucide-react";
+
+// Fork: the only statuses offered in the dropdown (a row with another status keeps it shown as-is).
+const STATUS_CHOICES = ["Evaluated", "Applied", "Interview", "Offer", "Hired", "Rejected", "Discarded"] as const;
+
+// Fork: a colour per status for the badge (soft background, darker text, light border).
+const STATUS_BADGE: Record<string, string> = {
+  Evaluated: "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-300",
+  Applied: "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-900 dark:bg-violet-950 dark:text-violet-300",
+  Interview: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
+  Offer: "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300",
+  Hired: "border-green-300 bg-green-100 text-green-900 dark:border-green-800 dark:bg-green-900 dark:text-green-200",
+  Rejected: "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300",
+  Discarded: "border-zinc-200 bg-zinc-100 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400",
+};
+function statusBadge(status: string): string {
+  return STATUS_BADGE[status] ?? "border-border bg-surface-hover text-muted";
+}
 import { cn } from "@/lib/cn";
 import { saveStatus } from "@/lib/pipeline-status.mjs";
 import { appliedWriteAllowed, statusEditAction } from "@/lib/applied-confirm.mjs";
@@ -60,9 +76,36 @@ function StatusEditor({ n, current, inline = false, applicationLabel, onSaved, h
     };
   }, []);
 
+  // Fork: inline mode uses a custom menu (fixed-positioned so the table's scroll box can't clip it).
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   useEffect(() => {
-    if (editing && inline) select.current?.focus();
+    if (!editing || !inline) { setMenuPos(null); return; }
+    const r = pencil.current?.getBoundingClientRect();
+    if (r) {
+      const height = STATUS_CHOICES.length * 32 + 8;
+      const below = r.bottom + 4 + height <= window.innerHeight;
+      setMenuPos({ top: below ? r.bottom + 4 : r.top - 4 - height, left: r.left });
+    }
+    const outside = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!wrapRef.current?.contains(t) && !menuRef.current?.contains(t)) cancel();
+    };
+    const onScroll = () => cancel();
+    document.addEventListener("pointerdown", outside);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+    // cancel is stable enough for this listener's lifetime (it only reads refs and props)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, inline]);
+  // Move focus into the menu once it is on screen (it mounts after its position is known).
+  useEffect(() => {
+    if (menuPos) menuRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+  }, [menuPos]);
 
   const heldPending = heldSave?.phase === "pending" ? heldSave.status : "";
   const heldError = heldSave?.phase === "failed" ? heldSave.error : "";
@@ -131,7 +174,10 @@ function StatusEditor({ n, current, inline = false, applicationLabel, onSaved, h
   }
 
   async function onChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const next = e.target.value;
+    await choose(e.target.value, document.activeElement === select.current);
+  }
+
+  async function choose(next: string, hadFocus: boolean) {
     const prev = pendingApplied ? pendingFrom.current : (inline ? current : status);
     if (saving.current || heldPending) return;
     const action = statusEditAction(next, prev);
@@ -148,7 +194,7 @@ function StatusEditor({ n, current, inline = false, applicationLabel, onSaved, h
       return;
     }
     setPendingApplied(false);
-    await commitChange(next, prev, document.activeElement === select.current);
+    await commitChange(next, prev, hadFocus);
   }
 
   async function confirmApplied() {
@@ -163,7 +209,7 @@ function StatusEditor({ n, current, inline = false, applicationLabel, onSaved, h
 
   const shown = heldPending ? heldPending : pendingApplied ? status : inline && !busy ? current : status;
   const appliedAsk = appliedWriteAllowed({ status: "Applied", confirmed: false });
-  const known = (CANONICAL_STATES as readonly string[]).includes(shown);
+  const known = (STATUS_CHOICES as readonly string[]).includes(shown);
   const buttonClass = "inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-hover hover:text-brand-text focus-visible:outline-2 focus-visible:outline-brand disabled:opacity-50 max-sm:size-11";
   const control = (
     <select
@@ -180,6 +226,8 @@ function StatusEditor({ n, current, inline = false, applicationLabel, onSaved, h
           cancel();
         }
       }}
+      // Fork: leaving the menu without choosing closes the editor.
+      onBlur={() => { if (inline && !saving.current && !pendingApplied) cancel(); }}
       disabled={savingNow}
       className={cn(
         "rounded-md border border-border bg-surface px-2.5 py-1 text-sm text-foreground outline-none transition-colors focus:border-brand/50 focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50 max-sm:min-h-[44px]",
@@ -187,7 +235,7 @@ function StatusEditor({ n, current, inline = false, applicationLabel, onSaved, h
       )}
     >
       {!known && <option value={shown}>{shown}</option>}
-      {CANONICAL_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+      {STATUS_CHOICES.map((s) => <option key={s} value={s}>{s}</option>)}
     </select>
   );
   return (
@@ -196,23 +244,65 @@ function StatusEditor({ n, current, inline = false, applicationLabel, onSaved, h
           cannot keep the edit button beside a long status. This group does
           not wrap. The confirmation stays outside it and takes the next line. */}
       <span className={inline ? "flex min-w-0 max-w-full flex-nowrap items-center gap-2" : "contents"}>
-        {inline ? (editing || heldPending !== "") ? (
-          <>
-            {control}
-            <button type="button" aria-label={`Cancel editing status for ${label}`} title="Cancel" onClick={cancel} disabled={savingNow} className={buttonClass}>
-              <X aria-hidden="true" className="size-3.5" />
+        {inline ? (
+          // Fork: the badge is the trigger and stays the same size; the choices open in a small menu.
+          <span ref={wrapRef} className="inline-flex">
+            <button
+              ref={pencil}
+              type="button"
+              aria-haspopup="listbox"
+              aria-expanded={editing}
+              aria-label={`Status ${shown}. Change status for ${label}`}
+              disabled={savingNow}
+              onClick={() => {
+                if (editing) { cancel(); return; }
+                setError(""); onHeldSave?.({ type: "clear" }); setEditing(true);
+              }}
+              className={cn(
+                "group/status inline-flex min-w-0 items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium transition-all hover:brightness-95 active:scale-95 focus-visible:outline-2 focus-visible:outline-brand disabled:opacity-70",
+                statusBadge(shown),
+                editing && "ring-2 ring-brand/40",
+              )}
+            >
+              <span className="min-w-0 truncate">{shown}</span>
+              <ChevronDown aria-hidden="true" className={cn("-mr-0.5 size-3 shrink-0 opacity-50 transition-all group-hover/status:opacity-100", editing && "rotate-180 opacity-100")} />
             </button>
-          </>
-        ) : (
-          <>
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", statusDot(shown))} />
-              <span className="min-w-0 truncate" title={shown}>{shown}</span>
-            </span>
-            <button ref={pencil} type="button" aria-label={`Edit status for ${label}`} title="Edit status" onClick={() => { setError(""); onHeldSave?.({ type: "clear" }); setEditing(true); }} className={buttonClass}>
-              <Pencil aria-hidden="true" className="size-4" />
-            </button>
-          </>
+            {editing && menuPos && (
+              <div
+                ref={menuRef}
+                role="listbox"
+                aria-label={`Status for ${label}`}
+                style={{ position: "fixed", top: menuPos.top, left: menuPos.left }}
+                className="co-menu-in z-50 w-40 rounded-lg border border-border bg-surface p-1 shadow-lg"
+                onKeyDown={(e) => {
+                  const opts = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? []);
+                  const i = opts.indexOf(document.activeElement as HTMLElement);
+                  if (e.key === "Escape") { e.preventDefault(); cancel(); }
+                  else if (e.key === "ArrowDown") { e.preventDefault(); opts[(i + 1) % opts.length]?.focus(); }
+                  else if (e.key === "ArrowUp") { e.preventDefault(); opts[(i - 1 + opts.length) % opts.length]?.focus(); }
+                }}
+              >
+                <style>{"@keyframes co-menu-in{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}.co-menu-in{animation:co-menu-in .12s ease-out}"}</style>
+                {STATUS_CHOICES.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    role="option"
+                    aria-selected={s === shown}
+                    onClick={() => {
+                      setEditing(false);
+                      if (s === shown) { requestAnimationFrame(() => pencil.current?.focus()); return; }
+                      void choose(s, true);
+                    }}
+                    className="flex h-8 w-full items-center justify-between rounded-md px-1.5 text-left outline-none hover:bg-surface-hover focus-visible:bg-surface-hover"
+                  >
+                    <span className={cn("rounded-md border px-2 py-0.5 text-xs font-medium", statusBadge(s))}>{s}</span>
+                    {s === shown && <Check aria-hidden="true" className="size-3.5 text-muted" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </span>
         ) : (
           <>
             <label htmlFor={id} className="text-xs text-faint">status</label>

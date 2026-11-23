@@ -5,7 +5,28 @@ import ReactMarkdown from "react-markdown";
 import { SkillGaps } from "@/components/skill-gaps";
 import remarkGfm from "remark-gfm";
 import { noMarkdownImages } from "@/lib/markdown-options.mjs";
-import { Check, Loader2, Upload } from "lucide-react";
+import { Check, CloudOff, Loader2, Save, Upload, X } from "lucide-react";
+
+import { Tip } from "@/components/ui/tip";
+
+// Fork: tooltip text for the save button, which doubles as the save status.
+function saveTip(label: string, canSave: boolean): string {
+  if (canSave) return "Unsaved changes · click to save";
+  if (label === "Saved") return "All changes saved";
+  if (label === "Saving") return "Saving…";
+  if (label === "Loading") return "Loading…";
+  if (label === "No file yet") return "Nothing to save yet";
+  return label;
+}
+
+// Fork: small icon transitions for the CV actions.
+const CV_ACTION_CSS = `
+@keyframes cv-icon-in { from { opacity: 0; transform: scale(.6) rotate(-20deg); } to { opacity: 1; transform: none; } }
+@keyframes cv-check { 0% { transform: scale(.4); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+.cv-icon-in { animation: cv-icon-in .22s ease-out; }
+.cv-check { animation: cv-check .45s cubic-bezier(.3,1.6,.5,1); }
+@media (prefers-reduced-motion: reduce) { .cv-icon-in, .cv-check { animation: none; } }
+`;
 import { cn } from "@/lib/cn";
 import { CvIngest } from "@/components/cv/cv-ingest";
 import {
@@ -174,34 +195,60 @@ export function CvEditor() {
             )}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Fork: icon-only actions. Upload toggles the import panel; the save button doubles as the
+            save status (spinner while saving, a check that pops in when saved, a pulsing dot when unsaved). */}
+        <div className="flex items-center gap-1.5">
+          <style>{CV_ACTION_CSS}</style>
+          <Tip label={importing ? "Close upload" : "Upload a CV (PDF or TeX)"}>
           <button
             type="button"
             disabled={state.phase !== "ready" || importSaving || state.inflight !== null || state.conflict}
             aria-expanded={importing}
             aria-controls="cv-import"
+            aria-label={importing ? "Close upload" : "Upload PDF / TeX"}
             onClick={() => setImporting(!importing)}
-            className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-brand/40 hover:text-brand-text disabled:opacity-50 max-sm:min-h-[44px]"
+            className="inline-flex size-9 items-center justify-center rounded-xl border border-border bg-surface text-muted transition-all hover:-translate-y-px hover:border-brand-text/30 hover:text-foreground active:translate-y-0 active:scale-95 disabled:opacity-40 max-sm:size-11"
           >
-            <Upload className="size-4" /> {importing ? "Close upload" : "Upload PDF / TeX"}
+            <span key={importing ? "x" : "up"} className="cv-icon-in inline-flex">
+              {importing ? <X className="size-4" /> : <Upload className="size-4" />}
+            </span>
           </button>
-          <p role="status" className="text-sm text-muted">
-            {status.label}
-          </p>
+          </Tip>
+          <p role="status" className="sr-only">{status.label}</p>
+          <Tip label={saveTip(status.label, status.canSave && !importing)} align="end">
           <button
             type="button"
             onClick={() => startSave(false)}
             disabled={!status.canSave || importing}
+            aria-label={status.canSave ? "Save" : status.label}
             className={cn(
-              "inline-flex items-center justify-center gap-2 rounded-full px-5 py-2 text-sm font-medium transition-colors max-sm:min-h-[44px]",
+              "relative inline-flex size-9 items-center justify-center rounded-xl transition-all max-sm:size-11",
               status.canSave && !importing
-                ? "bg-brand text-brand-foreground hover:bg-brand-200"
+                ? "bg-brand text-brand-foreground shadow-sm hover:-translate-y-px hover:bg-brand-200 active:translate-y-0 active:scale-95"
                 : "border border-border bg-surface text-muted",
             )}
           >
-            {status.label === "Saving" ? <Loader2 className="size-4 animate-spin" /> : status.label === "Saved" ? <Check className="size-4" /> : null}
-            Save
+            <span key={status.label} className="cv-icon-in inline-flex">
+              {status.label === "Saving" ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : status.label === "Saved" ? (
+                <Check className="cv-check size-4 text-emerald-600" strokeWidth={2.5} />
+              ) : status.canSave ? (
+                <Save className="size-4" />
+              ) : status.label === "Loading" ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <CloudOff className="size-4" />
+              )}
+            </span>
+            {status.label === "Unsaved" && (
+              <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 flex size-2.5">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-amber-400 opacity-60" />
+                <span className="relative inline-flex size-2.5 rounded-full bg-amber-500" />
+              </span>
+            )}
           </button>
+          </Tip>
         </div>
       </div>
 

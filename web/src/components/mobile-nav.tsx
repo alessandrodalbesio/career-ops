@@ -5,10 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { CoMark } from "@/components/co-mark";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { CatLogo } from "@/components/pixel-cat";
 import { WorkerPills } from "@/components/jobs/worker-pills";
-import { UsageMeter } from "@/components/usage-meter";
 import { instrumentSerif } from "@/lib/fonts";
 import { visibleNavItems, isActivePath } from "@/lib/nav-items";
 import { useJobs } from "@/components/jobs/job-store";
@@ -119,12 +117,11 @@ export function MobileNav({ followupsEnabled }: { followupsEnabled: boolean }) {
       <style>{STYLE}</style>
 
       <header className="co-mnav flex items-center gap-2 border-b border-border px-4 pb-3 md:hidden">
-        <Link href="/" className="flex min-h-[44px] items-center gap-2" aria-label="career-ops home">
-          <CoMark size={26} />
-          <span className={`${instrumentSerif.className} relative -top-px text-xl text-landing`}>career-ops</span>
+        <Link href="/" className="flex min-h-[44px] items-center gap-2" aria-label="Miao home">
+          <CatLogo size={26} />
+          <span className={`${instrumentSerif.className} relative -top-px text-xl text-landing`}>Miao</span>
         </Link>
         <div className="ml-auto flex items-center gap-0.5">
-          <ThemeToggle />
           <button
             type="button"
             onClick={() => setOpen(true)}
@@ -191,11 +188,6 @@ export function MobileNav({ followupsEnabled }: { followupsEnabled: boolean }) {
 
         <div className="px-3">
           <WorkerPills />
-        </div>
-
-        <div className="co-msafe mt-auto space-y-3 border-t border-border px-4 pt-4">
-          <UsageMeter />
-          <ThemeToggle showLabel className="bg-surface-hover/40" />
         </div>
       </aside>
     </>

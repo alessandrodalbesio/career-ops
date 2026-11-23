@@ -12,6 +12,9 @@ import { OnboardingBanner } from "@/components/onboarding-banner";
 import { OnboardingProgress } from "@/components/home/onboarding-progress";
 import { FirstRunHome } from "@/components/home/first-run-home";
 import { TodayDashboard } from "@/components/home/today-dashboard";
+import { SimpleHome } from "@/components/home/simple-home";
+
+const SIMPLE_HOME: boolean = true;
 
 export const dynamic = "force-dynamic"; // always read fresh local files at request time (never at build — CI has no user data)
 
@@ -63,6 +66,18 @@ export default async function Home() {
     if (entry.reason) reasons[app.n] = entry.reason;
     if (entry.legitimacy) legitimacy[app.n] = entry.legitimacy;
     postingUrls[app.n] = applyPostingUrl(entry.reportUrl, app.url, app.applyLink);
+  }
+  // Fork: Home is "paste a job URL and evaluate it", plus the best roles waiting for a decision.
+  // Set SIMPLE_HOME to false to bring back the old dashboard.
+  if (SIMPLE_HOME) {
+    const next = awaiting.slice(0, 5).map((app) => ({
+      n: app.n,
+      company: app.company,
+      role: app.role,
+      score: app.score,
+      why: reasons[app.n]?.plus ?? null,
+    }));
+    return <SimpleHome next={next} />;
   }
   const disks = await readCvDiskForRows(
     awaiting.map((app) => ({

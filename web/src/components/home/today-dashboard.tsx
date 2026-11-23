@@ -7,12 +7,10 @@ import { Bell, CircleHelp, Sparkles, ArrowRight, Undo2, X } from "lucide-react";
 import { instrumentSerif } from "@/lib/fonts";
 import type { Application, InboxJob } from "@/lib/career-ops";
 import type { DiscoveredOffer } from "@/lib/explore";
-import { DiscoveryCard } from "@/components/explore/discovery-card";
 import { FollowUpCard, type FollowUp } from "@/components/home/follow-up-card";
 import { DecisionCard } from "@/components/home/decision-card";
 import type { CardReason } from "@/lib/machine-summary.mjs";
 import { QuickEvaluate } from "@/components/quick-evaluate";
-import { LinkedInPaste } from "@/components/linkedin-paste";
 import { FollowupsDueSectionSkeleton } from "@/components/page-loading-skeletons";
 import { scoreNum } from "@/lib/format";
 import { undoStatus } from "@/lib/pipeline-status.mjs";
@@ -335,21 +333,7 @@ export function TodayDashboard({
         </Section>
       )}
 
-      {/* C. Fresh matches this week (supply loop) */}
-      {!freshError && fresh.length > 0 && (
-        <Section icon={Sparkles} title="Fresh matches this week" hint="Found by your free scans · 0 tokens">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {fresh.slice(0, 6).map((o) => (
-              <DiscoveryCard key={o.url} offer={o} inPipeline={inboxUrls.has(o.url)} />
-            ))}
-          </div>
-          {fresh.length > 6 && (
-            <Link href="/explore?view=fresh" className="mt-3 inline-flex items-center text-sm text-muted transition hover:text-brand-text max-sm:min-h-[44px]">
-              See all {freshCount} →
-            </Link>
-          )}
-        </Section>
-      )}
+      {/* Fork: "Fresh matches this week" and the LinkedIn job-alert paste box are removed from Home. */}
 
       {allClear && upcoming.length === 0 && (
         <div className="mt-8 rounded-2xl border border-border bg-surface/30 px-6 py-10 text-center">
@@ -359,8 +343,6 @@ export function TodayDashboard({
           </p>
         </div>
       )}
-
-      <LinkedInPaste />
 
       {decisionUndo && (
         <div className="fixed inset-x-0 bottom-32 z-40 flex justify-center px-4 sm:bottom-6">

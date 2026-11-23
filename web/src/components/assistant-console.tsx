@@ -4,8 +4,9 @@ import { lazy, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, use
 import { flushSync } from "react-dom";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { Send, X, Loader2, Settings, RotateCcw, ArrowUpRight, Sparkles, Maximize2, Minimize2, ChevronDown, Check, Trash2 } from "lucide-react";
-import { CoMark } from "@/components/co-mark";
+import { Miao } from "@/components/miao";
+import { Tip } from "@/components/ui/tip";
+import { ArrowUp, X, Loader2, Settings, ArrowUpRight, Sparkles, Maximize2, Minimize2, ChevronDown, Check, Trash2, Pencil, SquarePen } from "lucide-react";
 import { useJobs } from "@/components/jobs/job-store";
 import { usePipeline } from "@/components/pipeline/pipeline-provider";
 import { useApply } from "@/components/apply/apply-provider";
@@ -143,6 +144,25 @@ function msgText(m: Msg): string {
   return m.parts.filter((p): p is Extract<Part, { type: "text" }> => p.type === "text").map((p) => p.text).join(" ").trim();
 }
 
+// Fork: "typing…" indicator, three dots rising one after another.
+const TYPING_CSS = `
+@keyframes co-typing { 0%, 60%, 100% { transform: translateY(0); opacity: .35; } 30% { transform: translateY(-3px); opacity: 1; } }
+.co-typing span { animation: co-typing 1.2s ease-in-out infinite; }
+.co-typing span:nth-child(2) { animation-delay: .15s; }
+.co-typing span:nth-child(3) { animation-delay: .3s; }
+@media (prefers-reduced-motion: reduce) { .co-typing span { animation: none; opacity: .6; } }
+`;
+function TypingDots() {
+  return (
+    <span className="co-typing inline-flex items-center gap-1 py-2" role="status" aria-label="Assistant is typing">
+      <style>{TYPING_CSS}</style>
+      <span className="size-1.5 rounded-full bg-muted" />
+      <span className="size-1.5 rounded-full bg-muted" />
+      <span className="size-1.5 rounded-full bg-muted" />
+    </span>
+  );
+}
+
 export function AssistantConsole() {
   const [open, setOpen] = useState(false);
   const [cliId, setCliId] = useState<string | null>(null);
@@ -214,6 +234,8 @@ export function AssistantConsole() {
       const source = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
       returnFocusRef.current = source === document.body ? null : source;
       focusOnOpen.current = true;
+      // Fork: every fresh open starts a new chat (the previous one is already saved to disk).
+      if (!busy && messagesRef.current.some((m) => m.role === "user")) void selectChat();
     }
     setOpen(true);
   }
@@ -399,7 +421,7 @@ export function AssistantConsole() {
           }
           localStorage.removeItem(CHAT_KEY); // only after a successful disk write
         }
-        if (!restored && data.chats.length) restored = await chatRequest(`/api/assistant/chats?id=${data.chats[0].id}`);
+        // Fork: start on a new chat instead of reopening the latest one (saved chats stay in the picker).
         if (cancelled) return;
         activeChat.current = restored ? { id: restored.id, revision: restored.revision, title: restored.title } : { id: crypto.randomUUID(), revision: 0 };
         const next = restored ? cleanMessages(restored.messages) as Msg[] : [];
@@ -551,9 +573,7 @@ export function AssistantConsole() {
     finally { finishConversationAction(() => setChatPending(false), '[aria-label="New chat"]'); }
   }
 
-  useEffect(() => {
-    if (open && messages.length === 0) setMessages([{ role: "assistant", parts: [{ type: "text", text: GREETING }] }]);
-  }, [open, messages.length]);
+  // Fork: no greeting bubble; an empty chat shows the centred welcome screen instead.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
@@ -908,9 +928,11 @@ export function AssistantConsole() {
           onClick={(e) => openAssistant(e.currentTarget)}
           onPointerEnter={loadMarkdown}
           onFocus={loadMarkdown}
-          className="fixed bottom-5 right-5 z-50 flex items-center justify-center gap-2 rounded-full border border-border bg-surface/90 py-1.5 pl-1.5 pr-4 shadow-lg backdrop-blur transition-colors hover:bg-surface-hover max-sm:min-h-[44px] md-tall:bottom-24 md-tall:left-3 md-tall:right-auto md-tall:max-w-[13.5rem]"
+          className="fixed bottom-5 right-5 z-50 flex items-center justify-center gap-2 rounded-2xl border border-border bg-surface/90 py-1.5 pl-1.5 pr-4 shadow-lg backdrop-blur transition-colors hover:bg-surface-hover max-sm:min-h-[44px]"
         >
-          <CoMark size={26} />
+          <span aria-hidden="true" className="inline-flex size-[26px] items-center justify-center rounded-xl bg-brand text-brand-foreground">
+            <Sparkles className="size-4" />
+          </span>
           <span className="text-sm font-medium">Ask<span className="sr-only"> the assistant</span></span>
         </button>
       )}
@@ -935,24 +957,9 @@ export function AssistantConsole() {
           }}
           className={cn("fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl", PANEL_CLASS[size])}
         >
-          <header className="flex items-center gap-2.5 border-b border-border px-4 py-3">
-            <CoMark size={26} />
-            <div className="flex-1">
-              <div id={panelTitleId} className="text-sm font-semibold tracking-tight">Assistant</div>
-              <div className="text-xs text-faint">{cliId ? `via ${cliId}` : "no CLI configured"}</div>
-            </div>
-            <Button variant="ghost" size="icon" onClick={cycleSize} className="text-muted" aria-label={SIZE_LABEL[size]} title={SIZE_LABEL[size]}>
-              {size === "full" ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => void selectChat()} disabled={busy || chatPending || !chatReady} className="text-muted" aria-label="New chat" title="New chat">
-              <RotateCcw className="size-4" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={closeAssistant} className="text-muted" aria-label="Close assistant">
-              <X className="size-4" />
-            </Button>
-          </header>
-
-          <div className="flex items-center gap-2 border-b border-border px-4 py-2">
+          {/* Fork: one header row: conversation title (opens the history) + ghost icons. */}
+          <header className="flex items-center gap-1 px-3 py-2">
+            <span id={panelTitleId} className="sr-only">Assistant</span>
             {isEditingTitle ? (
               <div
                 className="flex min-w-0 flex-1 items-center gap-1.5"
@@ -1025,7 +1032,7 @@ export function AssistantConsole() {
                         setHistoryOpen(false);
                       }
                     }}
-                    className="flex w-full items-center justify-between gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-left text-sm text-foreground transition-colors hover:border-brand/40 focus:border-brand/50 focus:outline-none disabled:opacity-40"
+                    className="inline-flex max-w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-40"
                   >
                     <span className="truncate">{chats.find(c => c.id === (chats.some(x => x.id === activeChat.current.id) ? activeChat.current.id : ""))?.title || "New chat"}</span>
                     <ChevronDown className={cn("size-3.5 shrink-0 text-muted transition-transform", historyOpen && "rotate-180")} />
@@ -1055,7 +1062,7 @@ export function AssistantConsole() {
                           options[options.length - 1]?.focus();
                         }
                       }}
-                      className="absolute left-0 top-full z-50 mt-1 max-h-60 w-full space-y-0.5 overflow-y-auto rounded-lg border border-border bg-surface p-1 shadow-xl"
+                      className="absolute left-0 top-full z-50 mt-1 max-h-72 w-72 max-w-[calc(100vw-4rem)] space-y-0.5 overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-xl"
                     >
                       <button
                         type="button"
@@ -1074,33 +1081,67 @@ export function AssistantConsole() {
                       </button>
                       {chats.map(c => {
                         const isSelected = c.id === activeChat.current.id;
+                        // Rename / delete act on the active chat, so open this one first if needed.
+                        const actOn = async (action: () => void) => {
+                          setHistoryOpen(false);
+                          if (!isSelected) await selectChat(c.id);
+                          action();
+                        };
                         return (
-                          <button
-                            key={c.id}
-                            type="button"
-                            role="option"
-                            aria-selected={isSelected}
-                            onClick={() => {
-                              void selectChat(c.id);
-                              setHistoryOpen(false);
-                            }}
-                            className={cn(
-                              "flex w-full items-center truncate rounded-md px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-surface-hover",
-                              isSelected ? "bg-surface-hover/60 font-medium text-brand-text" : "text-foreground"
-                            )}
-                          >
-                            <span className="truncate">{c.title}</span>
-                          </button>
+                          <div key={c.id} role="presentation" className="group flex items-center rounded-md hover:bg-surface-hover">
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={isSelected}
+                              onClick={() => {
+                                void selectChat(c.id);
+                                setHistoryOpen(false);
+                              }}
+                              className={cn(
+                                "flex min-w-0 flex-1 items-center rounded-md px-2.5 py-1.5 text-left text-sm",
+                                isSelected ? "font-medium text-brand-text" : "text-foreground"
+                              )}
+                            >
+                              <span className="truncate">{c.title}</span>
+                            </button>
+                            <span className="flex shrink-0 items-center pr-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                              <button type="button" tabIndex={-1} aria-label={`Rename ${c.title}`} title="Rename" disabled={busy || chatPending}
+                                onClick={() => void actOn(startRename)}
+                                className="inline-flex size-6 items-center justify-center rounded text-muted hover:text-foreground disabled:opacity-40">
+                                <Pencil className="size-3.5" />
+                              </button>
+                              <button type="button" tabIndex={-1} aria-label={`Delete ${c.title}`} title="Delete" disabled={busy || chatPending}
+                                onClick={() => void actOn(removeChat)}
+                                className="inline-flex size-6 items-center justify-center rounded text-muted hover:text-red-600 disabled:opacity-40">
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            </span>
+                          </div>
                         );
                       })}
                     </div>
                   )}
                 </div>
-                <button className="text-xs text-muted transition-colors hover:text-foreground disabled:opacity-40" disabled={busy || chatPending || !activeChat.current.revision} onClick={startRename}>Rename</button>
-                <button className="text-xs text-muted transition-colors hover:text-foreground disabled:opacity-40" disabled={busy || chatPending || !activeChat.current.revision} onClick={() => void removeChat()}>Delete</button>
               </>
             )}
-          </div>
+            <div className="ml-auto flex shrink-0 items-center">
+              <Tip label="New chat">
+                <Button variant="ghost" size="icon" onClick={() => void selectChat()} disabled={busy || chatPending || !chatReady} className="text-muted" aria-label="New chat">
+                  <SquarePen className="size-4" />
+                </Button>
+              </Tip>
+              <Tip label={SIZE_LABEL[size]}>
+                <Button variant="ghost" size="icon" onClick={cycleSize} className="text-muted" aria-label={SIZE_LABEL[size]}>
+                  {size === "full" ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+                </Button>
+              </Tip>
+              <Tip label="Close" align="end">
+                <Button variant="ghost" size="icon" onClick={closeAssistant} className="text-muted" aria-label="Close assistant">
+                  <X className="size-4" />
+                </Button>
+              </Tip>
+            </div>
+          </header>
           {chatWarnings.map(warning => <div key={warning.id} role="alert" className="px-4 py-2 text-sm text-amber-800 dark:text-amber-400">{warning.error}. Other conversations are still available.</div>)}
           {saveError && <div role="alert" className="space-y-2 px-4 py-2 text-sm text-amber-800 dark:text-amber-400">
             <p>{saveError}</p>
@@ -1110,7 +1151,14 @@ export function AssistantConsole() {
               <button className="underline" disabled={busy || chatPending} onClick={() => void discardAndStartChat()}>Discard unsaved changes and start new chat</button>
             </div> : <button className="underline" onClick={() => window.location.reload()}>Reload</button>}
           </div>}
-          <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+          <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto bg-surface px-4 py-4">
+            {messages.length === 0 && (
+              <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+                <div className="mb-6"><Miao scale={5} busy={busy} /></div>
+                <h2 className="text-xl font-semibold tracking-tight text-foreground">Welcome Plushy <span aria-hidden="true">❤️</span></h2>
+                <p className="mt-2 max-w-xs text-sm text-muted">How can I help with your job search today?</p>
+              </div>
+            )}
             {messages.map((m, i) => {
               const hasVisible = m.parts.some((p) => (p.type === "text" && p.text.trim()) || p.type !== "text");
               const isLast = i === messages.length - 1;
@@ -1123,16 +1171,19 @@ export function AssistantConsole() {
                   tabIndex={m.role === "assistant" ? -1 : undefined}
                   className={cn("flex rounded focus-visible:outline-2 focus-visible:outline-brand", m.role === "user" ? "justify-end" : "justify-start")}
                 >
+                  {/* Fork: light grey bubble for the user, plain text (no bubble) for the assistant. */}
                   <div
                     className={cn(
-                      "max-w-[88%] rounded-2xl px-3.5 py-2 text-sm",
-                      m.role === "user" ? "bg-brand text-brand-foreground" : "w-full bg-surface-hover text-foreground",
+                      "text-sm leading-relaxed text-foreground",
+                      m.role === "user"
+                        ? "max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-border/60 bg-surface-hover px-3.5 py-2"
+                        : "w-full",
                     )}
                   >
                     {m.role === "user" ? (
                       msgText(m)
                     ) : !hasVisible && busy && isLast ? (
-                      <Loader2 className="size-4 animate-spin text-muted" />
+                      <TypingDots />
                     ) : (
                       <div className="space-y-2">
                         {m.parts.map((p, j) => (
@@ -1146,22 +1197,6 @@ export function AssistantConsole() {
             })}
           </div>
 
-          {/* proactive suggestion chips — onboarding + offer-driven next steps */}
-          {cliId && !busy && suggestions.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 px-3 pb-1 pt-0.5">
-              {suggestions.map((s, i) => (
-                <button
-                  key={i}
-                  onClick={() => send(s.send)}
-                  className="inline-flex items-center gap-1 rounded-full border border-border bg-surface/60 px-2.5 py-1 text-xs text-muted transition-colors hover:border-brand/40 hover:bg-brand-soft hover:text-brand-text"
-                >
-                  <Sparkles className="size-3 text-brand-text/70" />
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          )}
-
           {!cliId && (
             <Link
               href="/config"
@@ -1172,10 +1207,11 @@ export function AssistantConsole() {
             </Link>
           )}
 
-          <div className="border-t border-border p-3">
+          <div className="px-3 pb-3 pt-1">
             <label htmlFor={inputId} className="sr-only">Message to assistant</label>
             <p id={inputHelpId} className="sr-only">Enter sends your message. Shift+Enter adds a new line.</p>
-            <div className="flex items-end gap-2">
+            {/* Fork: one composer box, send button inside it. */}
+            <div className="flex items-end gap-2 rounded-2xl border border-border bg-surface py-1.5 pl-3 pr-1.5 shadow-sm transition-colors focus-within:border-brand-text/40">
               <textarea
                 id={inputId}
                 aria-describedby={inputHelpId}
@@ -1188,11 +1224,11 @@ export function AssistantConsole() {
                     send();
                   }
                 }}
-                placeholder={cliId ? "Ask anything…" : "Configure a CLI first"}
+                placeholder={cliId ? "Ask Miao anything…" : "Configure a CLI first"}
                 rows={1}
                 disabled={!cliId}
                 style={{ maxHeight: INPUT_MAX_PX[size] }}
-                className="flex-1 resize-none rounded-xl border border-border bg-surface/60 px-3 py-2 text-sm outline-none transition-colors placeholder:text-faint focus:border-brand/50 disabled:opacity-50"
+                className="flex-1 resize-none bg-transparent py-1.5 text-sm outline-none placeholder:text-faint disabled:opacity-50"
               />
               <button
                 onClick={(e) => {
@@ -1200,30 +1236,24 @@ export function AssistantConsole() {
                   void send();
                 }}
                 disabled={busy || chatPending || !chatReady || !input.trim() || !cliId}
-                className="rounded-xl bg-brand p-2 text-brand-foreground transition-colors hover:bg-brand-200 disabled:opacity-40"
+                className={cn(
+                  "inline-flex size-8 shrink-0 items-center justify-center rounded-full transition-colors",
+                  input.trim() && !busy ? "bg-brand text-brand-foreground hover:bg-brand-200" : "bg-surface-hover text-faint",
+                )}
                 aria-label="Send"
               >
-                {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
               </button>
             </div>
-            <div className="mt-2 space-y-1 text-xs">
-              {feedbackText && <p id={feedbackId} className="text-muted">{feedbackText}</p>}
-              <div className="flex flex-wrap gap-x-3 gap-y-1">
-                {!busy && latestReply?.parts.some((p) => p.type !== "text" || p.text.trim()) && (
-                  <button type="button" aria-describedby={feedbackText ? feedbackId : undefined} onClick={() => {
-                    latestReplyRef.current?.focus({ preventScroll: true });
-                    latestReplyRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
-                  }} className="text-brand-text underline">
-                    {requestFeedback?.phase === "error" ? "Review error" : "Read latest reply"}
-                  </button>
-                )}
-                {pendingConfirmations > 0 && (
-                  <button type="button" onClick={() => scrollRef.current?.querySelector<HTMLElement>('[data-assistant-confirmation="pending"]')?.focus()} className="text-brand-text underline">
-                    Review pending actions
-                  </button>
-                )}
+            {/* Fork: the "Processing… / Reply ready." line is kept for screen readers only. */}
+            {feedbackText && <p id={feedbackId} className="sr-only">{feedbackText}</p>}
+            {pendingConfirmations > 0 && (
+              <div className="mt-2 text-xs">
+                <button type="button" onClick={() => scrollRef.current?.querySelector<HTMLElement>('[data-assistant-confirmation="pending"]')?.focus()} className="text-brand-text underline">
+                  Review pending actions
+                </button>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}
