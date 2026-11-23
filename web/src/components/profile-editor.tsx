@@ -179,7 +179,7 @@ export function ProfileEditor() {
   const [status, setStatus] = useState<Record<string, Status>>({});
 
   useEffect(() => {
-    fetch("/api/profile/fields")
+    fetch("/api/profile/fields", { cache: "no-store" })
       .then((r) => (r.ok ? (r.json() as Promise<{ values: Values }>) : Promise.reject()))
       .then((d) => setValues(d.values))
       .catch(() => setLoadError(true));
@@ -267,10 +267,10 @@ export function ProfileEditor() {
 
 // ── Your rules for Miao (modes/_custom.md) ──
 function RulesCard() {
-  const [data, setData] = useState<{ groups: RuleGroups; other: string[] } | null>(null);
+  const [data, setData] = useState<{ groups: RuleGroups } | null>(null);
   const [status, setStatus] = useState<Partial<Record<RuleGroupId, Status>>>({});
   useEffect(() => {
-    fetch("/api/profile/rules").then((r) => r.json()).then(setData).catch(() => {});
+    fetch("/api/profile/rules", { cache: "no-store" }).then((r) => r.json()).then(setData).catch(() => {});
   }, []);
   const save = async (group: RuleGroupId, rules: string[]) => {
     setStatus((s) => ({ ...s, [group]: { kind: "saving" } }));
@@ -304,21 +304,6 @@ function RulesCard() {
             </div>
           </div>
         ))}
-        {data.other.length > 0 && (
-          <div className="grid grid-cols-1 gap-x-6 gap-y-1 px-6 py-3 sm:grid-cols-[200px_minmax(0,1fr)]">
-            <div className="pt-1.5">
-              <p className="text-sm font-medium text-foreground">Already set up</p>
-              <p className="text-xs text-muted">Rules added earlier with Miao. Ask Miao to change these.</p>
-            </div>
-            <ul className="min-w-0 space-y-1 pt-1.5">
-              {data.other.map((r) => (
-                <li key={r} className="flex items-start gap-2 px-2.5 py-0.5 text-sm text-muted">
-                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-faint" aria-hidden />{r}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
       </div>
     </section>
   );
@@ -334,7 +319,7 @@ function RolesCard() {
   const nameRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
-    fetch("/api/profile/roles")
+    fetch("/api/profile/roles", { cache: "no-store" })
       .then(async (r) => { const b = await r.json(); if (!r.ok) throw new Error(b.error); return b as RolesDoc; })
       .then((d) => { setDoc(d); saved.current = JSON.stringify(d); })
       .catch((e) => setError(e instanceof Error && e.message ? e.message : "Your roles could not be read."));

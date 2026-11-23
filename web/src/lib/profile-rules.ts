@@ -61,11 +61,16 @@ export function writeRules(text: string, groups: RuleGroups): string {
   return [...lines, "", ...block].join("\n") + "\n";
 }
 
-/** Short titles of the rules already in the file outside the Profile page's section (read-only on the page). */
-export function otherRules(text: string): string[] {
+/**
+ * Rules written elsewhere in the file (House Rules, Output Preferences, Off-Limits),
+ * e.g. by Miao, moved into the Profile page's section so every rule shows up, and
+ * can be edited, in one of the three groups. The text is moved word for word.
+ * Only single-line bullets move; anything else (workflows, comments) is left alone.
+ */
+export function adoptOtherRules(text: string): { text: string; moved: number } {
   const lines = text.split("\n");
   const range = sectionRange(lines);
-  const out: string[] = [];
+  const picked: { idx: number; rule: string }[] = [];
   let inRules = false;
   let inComment = false;
   lines.forEach((line, i) => {
@@ -76,9 +81,26 @@ export function otherRules(text: string): string[] {
     if (h2) { inRules = /house rules|output preferences|off-limits/i.test(h2[1]); return; }
     if (!inRules) return;
     const b = line.match(/^-\s+(.*)$/);
-    if (!b) return;
-    const title = b[1].match(/^\*\*(.+?)\*\*/)?.[1]?.replace(/[:.]\s*$/, "").replace(/\s*\(user-stated[^)]*\)/i, "");
-    out.push(title ?? (b[1].length > 90 ? `${b[1].slice(0, 90)}…` : b[1]));
+    const continued = /^\s{2,}\S/.test(lines[i + 1] ?? "");
+    // The bold markers around a rule's title would show as raw ** in the page's text boxes.
+    if (b && !continued) picked.push({ idx: i, rule: b[1].trim().replace(/^\*\*(.+?)\*\*/, "$1") });
   });
-  return out;
+  if (!picked.length) return { text, moved: 0 };
+  const groups = readRules(text);
+  for (const { rule } of picked) groups[groupFor(rule)].push(rule);
+  const drop = new Set(picked.map((p) => p.idx));
+  const rest = lines.filter((_, i) => !drop.has(i)).join("\n").replace(/\n{3,}/g, "\n\n");
+  return { text: writeRules(rest, groups), moved: picked.length };
+}
+
+/** Which group a rule belongs to, from what it says it applies to. */
+export function groupFor(rule: string): RuleGroupId {
+  const t = rule.toLowerCase();
+  const cv = /\bcvs?\b|résumé|resume/.test(t);
+  const letter = /cover letters?|\bletters?\b/.test(t);
+  const form = /\bforms?\b|form answers?/.test(t);
+  if (cv && (letter || form)) return "all";
+  if (cv) return "cv";
+  if (letter) return "cover";
+  return "all";
 }
