@@ -136,6 +136,21 @@ export function CvEditor() {
     pump();
   }, [pump]);
 
+  // Fork: a change applied from the Miao chat reloads the CV here, unless there
+  // is unsaved typing (then the normal conflict check on save takes over).
+  useEffect(() => {
+    const reload = () => {
+      const cur = stateRef.current;
+      if (cur.phase !== "ready" || cur.content !== cur.saved) return;
+      fetch("/api/cv")
+        .then((r) => (r.ok ? (r.json() as Promise<{ content?: unknown; exists?: unknown }>) : Promise.reject()))
+        .then((data) => dispatch({ type: "loaded", content: typeof data.content === "string" ? data.content : "", exists: data.exists === true, draft: null }))
+        .catch(() => {});
+    };
+    window.addEventListener("co-cv-changed", reload);
+    return () => window.removeEventListener("co-cv-changed", reload);
+  }, []);
+
   useEffect(() => {
     let live = true;
     fetch("/api/cv")

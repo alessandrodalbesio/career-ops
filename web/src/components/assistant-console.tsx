@@ -33,7 +33,7 @@ type Part =
   | { type: "note"; text: string }
   | { type: "card"; jobId: string }
   | { type: "batch"; batchId: string; jobIds: string[] }
-  | { type: "confirm"; cid: string; summary: string; state: "pending" | "saving" | "done" | "cancelled" | "failed"; message?: string; statusChange?: undefined }
+  | { type: "confirm"; cid: string; summary: string; state: "pending" | "saving" | "done" | "cancelled" | "failed"; message?: string; statusChange?: undefined; diff?: { before: string; after: string; reason?: string } }
   | StatusConfirmationPart;
 type Msg = { role: "user" | "assistant"; parts: Part[] };
 type RequestFeedback = { id: number; phase: "working" | "ready" | "error"; announce: boolean };
@@ -668,6 +668,12 @@ export function AssistantConsole() {
           if (!failure) router.refresh();
           return failure ? `Your profile was NOT saved: ${failure}.` : null;
         }),
+      // Fork: one approved CV change; an open /cv page reloads to show it.
+      editCv: (find, replace) =>
+        postAssistantWrite("/api/cv/edit", { find, replace }).then((failure) => {
+          if (!failure) window.dispatchEvent(new CustomEvent("co-cv-changed"));
+          return failure ? `Your CV was NOT changed: ${failure}` : null;
+        }),
       writePortals: (roles, location) =>
         postAssistantWrite("/api/portals", { roles, location }).then((failure) =>
           failure ? `Your scan targets were NOT saved: ${failure}.` : null,
@@ -699,7 +705,7 @@ export function AssistantConsole() {
         appendParts([{ type: "confirm", cid, summary: res.summary, statusChange: res.statusChange, state: "pending" }]);
       } else {
         confirmRuns.current.set(cid, res.run);
-        appendParts([{ type: "confirm", cid, summary: res.summary, state: "pending" }]);
+        appendParts([{ type: "confirm", cid, summary: res.summary, state: "pending", ...(res.diff ? { diff: res.diff } : {}) }]);
       }
     }
     return res.status !== "ignored" || Boolean(res.note?.trim());
@@ -1450,6 +1456,7 @@ function ConfirmationCard({ part, onConfirm }: {
   onConfirm: (cid: string, accept: boolean) => void;
 }) {
   const id = useId();
+  const diff = "diff" in part ? part.diff : undefined;
   const summaryId = `${id}-summary`;
   const resultId = `${id}-result`;
   const resultRef = useRef<HTMLDivElement>(null);
@@ -1474,27 +1481,39 @@ function ConfirmationCard({ part, onConfirm }: {
   return (
     <div role="group" aria-labelledby={summaryId} data-assistant-confirmation={part.state} tabIndex={-1} className="rounded-xl border border-brand/40 bg-brand-soft p-2.5 focus-visible:outline-2 focus-visible:outline-brand">
       <div id={summaryId} className="text-xs font-medium text-foreground">{part.summary}</div>
+      {diff && (
+        <div className="mt-2 space-y-1.5 text-xs leading-relaxed">
+          <div className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-red-900">
+            <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-red-700">Now</span>
+            <span className={cn("whitespace-pre-wrap", part.state === "done" && "line-through opacity-70")}>{diff.before.replace(/\*\*/g, "")}</span>
+          </div>
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-emerald-900">
+            <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-emerald-700">New</span>
+            <span className="whitespace-pre-wrap">{diff.after.replace(/\*\*/g, "") || <em className="opacity-70">(removed)</em>}</span>
+          </div>
+        </div>
+      )}
       {part.state === "pending" ? (
         <div className="mt-2 flex gap-2">
           <button
-            aria-label={`Confirm: ${part.summary}`}
+            aria-label={`${diff ? "Apply" : "Confirm"}: ${part.summary}`}
             onClick={(e) => decide(e.currentTarget, true)}
             className="rounded-full bg-brand px-3 py-1 text-xs font-medium text-brand-foreground transition-colors hover:bg-brand-200"
           >
-            Confirm
+            {diff ? "Apply" : "Confirm"}
           </button>
           <button
-            aria-label={`Cancel: ${part.summary}`}
+            aria-label={`${diff ? "Skip" : "Cancel"}: ${part.summary}`}
             onClick={(e) => decide(e.currentTarget, false)}
             className="rounded-full border border-border px-3 py-1 text-xs text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
           >
-            Cancel
+            {diff ? "Skip" : "Cancel"}
           </button>
         </div>
       ) : (
         <div ref={resultRef} tabIndex={-1} aria-labelledby={`${summaryId} ${resultId}`} className="mt-1 rounded text-xs text-faint focus-visible:outline-2 focus-visible:outline-brand">
           <span id={resultId} role={part.state === "failed" ? "alert" : undefined} className={part.state === "failed" ? "text-red-700 dark:text-red-400" : undefined}>
-            {part.state === "done" ? "✓ started" : part.state === "saving" ? "saving…" : part.state === "failed" ? part.message : "cancelled"}
+            {part.state === "done" ? (diff ? "✓ Applied to your CV" : "✓ started") : part.state === "saving" ? "saving…" : part.state === "failed" ? part.message : diff ? "Skipped" : "cancelled"}
           </span>
         </div>
       )}

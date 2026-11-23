@@ -58,7 +58,12 @@ export type ActionCtx = {
   writeProfile?: (patch: Record<string, unknown>) => Promise<string | null>; // merge-safe config/profile.yml write
   writePortals?: (roles: string[], location?: string[]) => Promise<string | null>; // merge-safe portals.yml title_filter write
   writePersonalization?: (patch: Record<string, unknown>) => void; // section-safe modes/_profile.md write
+  // Fork: replace one exact passage of cv.md (after the user clicks Apply). Null when saved, else the reason.
+  editCv?: (find: string, replace: string) => Promise<string | null>;
 };
+
+/** Fork: what a CV-edit card shows: the old text and the proposed new text. */
+export type CvDiff = { before: string; after: string; reason?: string };
 
 export type ProfilePatch = {
   name?: string;
@@ -95,7 +100,7 @@ export type DoneInfo = { jobIds?: string[]; batchId?: string; note?: string; fai
 export type DispatchResult =
   | ({ status: "done" } & DoneInfo)
   | { status: "ignored"; note?: string }
-  | { status: "confirm"; summary: string; statusChange?: undefined; run: () => DoneInfo }
+  | { status: "confirm"; summary: string; statusChange?: undefined; diff?: CvDiff; run: () => DoneInfo }
   | { status: "confirm"; summary: string; statusChange: { n: string; status: string }; run: () => Promise<DoneInfo> };
 
 // ── helpers ──────────────────────────────────────────────────────────────
@@ -379,6 +384,25 @@ const ACTIONS: Record<string, ActionDef> = {
           ctx.writePersonalization!(p);
           return { note: "Personalization saved — evaluations now score against YOUR targeting." };
         },
+      };
+    },
+  },
+
+  // Fork: propose an exact change to the base CV (cv.md). The card shows old
+  // and new text; nothing is written until the user clicks Apply.
+  editCv: {
+    sideEffect: "write",
+    run: (raw, ctx) => {
+      if (!ctx.editCv) return { status: "ignored", note: "CV editing is unavailable here" };
+      const find = typeof raw.find === "string" ? raw.find : "";
+      const replace = typeof raw.replace === "string" ? raw.replace : null;
+      if (!find.trim() || replace === null || find === replace || find.length > 5000 || replace.length > 5000) return { status: "ignored" };
+      const reason = isStr(raw.reason) ? raw.reason.trim().slice(0, 300) : undefined;
+      return {
+        status: "confirm",
+        summary: reason ? `Change your CV: ${reason}` : "Change your CV?",
+        diff: { before: find, after: replace, reason },
+        run: () => ({ note: "Your CV was updated.", failure: ctx.editCv!(find, replace) }),
       };
     },
   },
