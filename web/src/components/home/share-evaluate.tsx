@@ -65,8 +65,8 @@ export function ShareEvaluate({ url }: { url: string }) {
           </h1>
           <p className="mt-2 text-sm text-muted">{siteOf(startedUrl)}</p>
           <p className="mt-4 inline-flex items-center gap-1.5 text-xs text-faint">
-            {done ? <><Check className="size-3.5 text-emerald-600" /> Done{job?.result?.score ? ` · ${job.result.score}` : ""}</>
-              : failed ? <><TriangleAlert className="size-3.5 text-amber-600" /> Something went wrong. Try sharing it again.</>
+            {done ? <><Check className="size-3.5 text-emerald-800 dark:text-emerald-400" /> Done{job?.result?.score ? ` · ${job.result.score}` : ""}</>
+              : failed ? <><TriangleAlert className="size-3.5 text-amber-800 dark:text-amber-400" /> Something went wrong. Try sharing it again.</>
               : <><Loader2 className="size-3.5 animate-spin" /> This takes a few minutes. Keep this page open.</>}
           </p>
           {(done || failed) && (

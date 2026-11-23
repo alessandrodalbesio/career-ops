@@ -232,7 +232,7 @@ export function CvEditor() {
               {status.label === "Saving" ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : status.label === "Saved" ? (
-                <Check className="cv-check size-4 text-emerald-600" strokeWidth={2.5} />
+                <Check className="cv-check size-4 text-emerald-800 dark:text-emerald-400" strokeWidth={2.5} />
               ) : status.canSave ? (
                 <Save className="size-4" />
               ) : status.label === "Loading" ? (

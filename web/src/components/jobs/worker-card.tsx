@@ -111,7 +111,7 @@ function TrayCard({ job }: { job: Job }) {
     <div role="group" aria-label={workerIdentity(job)} className="flex gap-2.5">
       <span className={cn(
         "mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-lg",
-        running ? "bg-brand-soft text-brand-text" : job.status === "error" ? "bg-red-500/10 text-red-500" : gate || job.status === "gated" ? "bg-amber-500/10 text-amber-600" : "bg-emerald-500/10 text-emerald-600",
+        running ? "bg-brand-soft text-brand-text" : job.status === "error" ? "bg-red-500/10 text-red-500" : gate || job.status === "gated" ? "bg-amber-500/10 text-amber-800 dark:text-amber-400" : "bg-emerald-500/10 text-emerald-800 dark:text-emerald-400",
       )}>
         {running ? <Loader2 className="size-3.5 animate-spin" />
           : gate || job.status === "gated" ? <CirclePause className="size-3.5" />
@@ -128,7 +128,7 @@ function TrayCard({ job }: { job: Job }) {
           ) : null}
         </div>
         {detail && <div className="truncate text-[11px] text-muted">{detail}</div>}
-        {line && <div className={cn("mt-0.5 truncate text-[10px]", errorHint || gate ? "text-amber-700 dark:text-amber-400" : "text-faint")}>{line}</div>}
+        {line && <div className={cn("mt-0.5 truncate text-[10px]", errorHint || gate ? "text-amber-800 dark:text-amber-400" : "text-faint")}>{line}</div>}
         {running && (
           <div className="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-surface-hover">
             <div className="job-indeterminate h-full w-full" />

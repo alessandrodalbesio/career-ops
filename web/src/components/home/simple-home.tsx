@@ -81,7 +81,7 @@ export function SimpleHome({ next = [] }: { next?: NextRole[] }) {
           <span className="text-red-700 dark:text-red-400">{error}</span>
         ) : started ? (
           <span className="inline-flex items-center gap-1.5 text-muted">
-            <Check aria-hidden="true" className="size-3.5 text-emerald-600" />
+            <Check aria-hidden="true" className="size-3.5 text-emerald-800 dark:text-emerald-400" />
             Evaluation started. It will appear in your <Link href="/pipeline" className="text-brand-text underline-offset-2 hover:underline">Pipeline</Link> when ready.
           </span>
         ) : null}
