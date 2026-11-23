@@ -17,7 +17,7 @@ import type { Node as PMNode, Slice } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import type { EditorProps, EditorView } from "@tiptap/pm/view";
 import {
-  Bold, ChevronDown, ChevronRight, Copy, GripVertical, Heading1, Heading2, Heading3, Italic, Link as LinkIcon, List, ListOrdered, Plus, RefreshCw, RemoveFormatting, Strikethrough, Trash2, Type, Underline,
+  Bold, Check, ChevronDown, Globe, Mail, Pencil, Unlink, ChevronRight, Copy, GripVertical, Heading1, Heading2, Heading3, Italic, Link as LinkIcon, List, ListOrdered, Plus, RefreshCw, RemoveFormatting, Strikethrough, Trash2, Type, Underline,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 
@@ -180,6 +180,10 @@ export function NotionEditor({ initialHtml, onChange, placeholder = "Type '/' fo
   const [blockMenu, setBlockMenu] = useState<BlockMenuState | null>(null);
   const [turnIntoOpen, setTurnIntoOpen] = useState(false);
   const handleInner = useRef<HTMLDivElement>(null);
+  // Link preview card on hover (like Notion): address, open, copy, edit, remove.
+  const [linkHover, setLinkHover] = useState<{ href: string; pos: number; x: number; y: number } | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const hideLinkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkValue, setLinkValue] = useState("");
   const linkOpenRef = useRef(false);
@@ -212,6 +216,16 @@ export function NotionEditor({ initialHtml, onChange, placeholder = "Type '/' fo
       attributes: { class: "notion-doc", spellcheck: "true" },
       handleDrop: (view, event, slice, moved) => dropBetweenBlocks(view, event as DragEvent, slice, moved),
       handleDOMEvents: {
+        // ⌘/Ctrl-click opens a link in a new tab.
+        click: (_view, event) => {
+          const a = (event.target as HTMLElement | null)?.closest?.("a");
+          if (a && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            window.open(a.getAttribute("href") ?? "", "_blank", "noopener,noreferrer");
+            return true;
+          }
+          return false;
+        },
         // After a drop, leave the cursor at the end of the moved block instead of a highlighted selection.
         drop: (view) => {
           setTimeout(() => {
@@ -310,6 +324,50 @@ export function NotionEditor({ initialHtml, onChange, placeholder = "Type '/' fo
 
   useEffect(() => { if (editor && onReady) onReady(editor); }, [editor, onReady]);
   useEffect(() => { editor?.setEditable(editable); }, [editor, editable]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom as HTMLElement;
+    const onOver = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement).closest("a");
+      if (!a || !dom.contains(a)) return;
+      if (hideLinkTimer.current) clearTimeout(hideLinkTimer.current);
+      const r = a.getBoundingClientRect();
+      const box = wrap.current?.getBoundingClientRect();
+      let pos = -1;
+      try { pos = editor.view.posAtDOM(a, 0); } catch { /* not in the doc */ }
+      setLinkHover({ href: a.getAttribute("href") ?? "", pos, x: r.left - (box?.left ?? 0), y: r.bottom - (box?.top ?? 0) + 6 });
+    };
+    const onOut = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest("a")) return;
+      if (hideLinkTimer.current) clearTimeout(hideLinkTimer.current);
+      hideLinkTimer.current = setTimeout(() => setLinkHover(null), 250);
+    };
+    dom.addEventListener("mouseover", onOver);
+    dom.addEventListener("mouseout", onOut);
+    return () => { dom.removeEventListener("mouseover", onOver); dom.removeEventListener("mouseout", onOut); };
+  }, [editor]);
+
+  const editHoveredLink = () => {
+    if (!editor || !linkHover || linkHover.pos < 0) return;
+    editor.chain().focus().setTextSelection(linkHover.pos).extendMarkRange("link").run();
+    setLinkHover(null);
+    setLinkValue(linkHover.href.replace(/^mailto:/i, ""));
+    setLinkOpen(true);
+  };
+  const removeHoveredLink = () => {
+    if (!editor || !linkHover || linkHover.pos < 0) return;
+    editor.chain().focus().setTextSelection(linkHover.pos).extendMarkRange("link").unsetLink().run();
+    setLinkHover(null);
+  };
+  const copyHoveredLink = async () => {
+    if (!linkHover) return;
+    try {
+      await navigator.clipboard.writeText(linkHover.href.replace(/^mailto:/i, ""));
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1500);
+    } catch { /* clipboard blocked */ }
+  };
 
   // "+": a new empty block below the hovered one (or reuse it if it is already
   // an empty paragraph), with the block menu open. Nothing is typed into the text.
@@ -573,6 +631,31 @@ export function NotionEditor({ initialHtml, onChange, placeholder = "Type '/' fo
             </button>
           </div>
         </>
+      )}
+
+      {/* Link preview (hover a link) */}
+      {linkHover && !linkOpen && (
+        <div
+          className={cn("absolute z-50 flex max-w-[360px] items-center gap-0.5 py-1 pl-2 pr-1", menuBox)}
+          style={{ left: linkHover.x, top: linkHover.y }}
+          onMouseEnter={() => { if (hideLinkTimer.current) clearTimeout(hideLinkTimer.current); }}
+          onMouseLeave={() => { hideLinkTimer.current = setTimeout(() => setLinkHover(null), 200); }}
+        >
+          {linkHover.href.startsWith("mailto:") ? <Mail className="size-4 shrink-0 text-[rgb(55,53,47,0.5)]" /> : <Globe className="size-4 shrink-0 text-[rgb(55,53,47,0.5)]" />}
+          <a
+            href={linkHover.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open link"
+            className="mx-1.5 min-w-0 truncate text-sm text-[rgb(55,53,47)] hover:underline"
+          >
+            {linkHover.href.replace(/^mailto:/i, "").replace(/^https?:\/\//i, "").replace(/\/$/, "")}
+          </a>
+          <span className="mx-0.5 h-5 w-px shrink-0 bg-[rgb(55,53,47,0.09)]" />
+          <BubbleButton label={linkCopied ? "Copied" : "Copy link"} onClick={copyHoveredLink}>{linkCopied ? <Check className="size-4" /> : <Copy className="size-4" />}</BubbleButton>
+          <BubbleButton label="Edit link" onClick={editHoveredLink}><Pencil className="size-4" /></BubbleButton>
+          <BubbleButton label="Remove link" onClick={removeHoveredLink}><Unlink className="size-4" /></BubbleButton>
+        </div>
       )}
 
       {/* Block menu (click on ⋮⋮) */}
