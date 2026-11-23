@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDown, ArrowUp, Eye, EyeOff, Loader2, Pencil, Plus, Sparkles, TriangleAlert, Undo2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Eye, EyeOff, Loader2, Pencil, Plus, Sparkles, Undo2 } from "lucide-react";
 import { readSavedCliId } from "@/lib/saved-cli";
 import { cn } from "@/lib/cn";
+import { Tip } from "@/components/ui/tip";
 import { arrange } from "@/lib/cv-studio/html-blocks.mjs";
 import { bulletShown, restoredId, wordDiff, type StudioAction, type StudioBullet, type StudioEdits, type StudioItem, type StudioSection } from "@/lib/cv-studio/studio.mjs";
 
@@ -13,28 +14,42 @@ type AddedRow = { id: string; index: number; text: string };
 
 // Below this overlap a word diff is mostly red and green; the original reads better as its own line.
 const REWRITE_FLOOR = 0.45;
-type Common = { n: string; edits: StudioEdits; hidden: Set<string>; dispatch: Dispatch };
+type Common = { n: string; edits: StudioEdits; hidden: Set<string>; dispatch: Dispatch; checked: Set<string>; onCheck: (id: string) => void };
+
+// Fork: is this the summary section? Miao rewrites it for every job, so it is never flagged.
+export const isSummarySection = (title: string) => /summary|profile|about/i.test(title);
+
+// Fork: show **bold** as real bold (the tailored CV writes bold as Markdown).
+export function Bold({ text }: { text: string }) {
+  return <>{text.split(/(\*\*[^*]+\*\*)/g).map((part, k) => (/^\*\*[^*]+\*\*$/.test(part) ? <strong key={k} className="font-semibold">{part.slice(2, -2)}</strong> : <span key={k}>{part}</span>))}</>;
+}
 
 const iconButton = "inline-flex size-7 items-center justify-center rounded-md text-faint transition-colors hover:bg-surface-hover hover:text-foreground disabled:opacity-30 max-sm:size-11";
 
 function MoveButtons({ parent, id, siblings, first, last, dispatch, label }: { parent: string; id: string; siblings: string[]; first: boolean; last: boolean; dispatch: Dispatch; label: string }) {
   return (
     <>
-      <button className={iconButton} disabled={first} aria-label={`Move ${label} up`} onClick={() => dispatch({ type: "move", parent, id, by: -1, siblings })}>
-        <ArrowUp className="size-3.5" />
-      </button>
-      <button className={iconButton} disabled={last} aria-label={`Move ${label} down`} onClick={() => dispatch({ type: "move", parent, id, by: 1, siblings })}>
-        <ArrowDown className="size-3.5" />
-      </button>
+      <Tip label="Move up">
+        <button className={iconButton} disabled={first} aria-label={`Move ${label} up`} onClick={() => dispatch({ type: "move", parent, id, by: -1, siblings })}>
+          <ArrowUp className="size-3.5" />
+        </button>
+      </Tip>
+      <Tip label="Move down">
+        <button className={iconButton} disabled={last} aria-label={`Move ${label} down`} onClick={() => dispatch({ type: "move", parent, id, by: 1, siblings })}>
+          <ArrowDown className="size-3.5" />
+        </button>
+      </Tip>
     </>
   );
 }
 
 function HideButton({ id, hidden, dispatch, label }: { id: string; hidden: boolean; dispatch: Dispatch; label: string }) {
   return (
-    <button className={iconButton} aria-label={hidden ? `Show ${label}` : `Hide ${label}`} aria-pressed={hidden} onClick={() => dispatch({ type: "toggle", id })}>
-      {hidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-    </button>
+    <Tip label={hidden ? "Put back in the CV" : "Remove from the CV"} align="end">
+      <button className={iconButton} aria-label={hidden ? `Show ${label}` : `Hide ${label}`} aria-pressed={hidden} onClick={() => dispatch({ type: "toggle", id })}>
+        {hidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+      </button>
+    </Tip>
   );
 }
 
@@ -43,9 +58,9 @@ export function SectionCard({ section, siblings, first, last, ...common }: Commo
   const isHidden = hidden.has(section.id);
   const items = arrange(section.items, edits.order[section.id]);
   return (
-    <section aria-label={section.title} className={cn("rounded-2xl border border-border bg-surface/40 px-4 py-3 transition-opacity", isHidden && "opacity-50")}>
+    <section aria-label={section.title} className={cn("rounded-2xl border border-border bg-surface px-5 py-4 transition-opacity", isHidden && "opacity-50")}>
       <header className="flex items-center gap-1">
-        <h2 className="flex-1 font-mono text-xs uppercase tracking-[0.16em] text-faint">{section.title || "Section"}</h2>
+        <h2 className="flex-1 text-sm font-semibold text-foreground">{section.title || "Section"}</h2>
         <MoveButtons parent="root" id={section.id} siblings={siblings} first={first} last={last} dispatch={dispatch} label={`${section.title} section`} />
         <HideButton id={section.id} hidden={isHidden} dispatch={dispatch} label={`${section.title} section`} />
       </header>
@@ -105,14 +120,14 @@ function ItemBlock({ item, section, siblings, first, last, ...common }: Common &
                 </button>
               </li>
             ) : (
-              <BulletRow key={b.id} bullet={b} parent={item.id} siblings={rowIds} first={k === 0} last={k === rows.length - 1} movable={movable} {...common} />
+              <BulletRow key={b.id} bullet={b} summary={isSummarySection(section.title)} parent={item.id} siblings={rowIds} first={k === 0} last={k === rows.length - 1} movable={movable} {...common} />
             ),
           )}
           {item.restorable.map((r, idx) =>
             restored.includes(idx) ? null : (
               <li key={`r${idx}`} className="flex items-start gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-sm text-faint">
                 <span className="flex-1">
-                  <span className="mr-1.5 text-[10px] font-medium uppercase tracking-wide">Dropped by the tailor</span>
+                  <span className="mr-1.5 text-[10px] font-medium uppercase tracking-wide">Removed by Miao</span>
                   {r.text}
                 </span>
                 <button className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-muted hover:border-brand/40 hover:text-brand-text" onClick={() => dispatch({ type: "restore", item: item.id, index: idx })}>
@@ -127,18 +142,19 @@ function ItemBlock({ item, section, siblings, first, last, ...common }: Common &
   );
 }
 
-function BulletRow({ n, bullet, parent, siblings, first, last, movable, edits, hidden, dispatch }: Common & { bullet: StudioBullet; parent: string; siblings: string[]; first: boolean; last: boolean; movable: boolean }) {
+function BulletRow({ n, bullet, summary, parent, siblings, first, last, movable, edits, hidden, dispatch, checked, onCheck }: Common & { bullet: StudioBullet; summary: boolean; parent: string; siblings: string[]; first: boolean; last: boolean; movable: boolean }) {
   const shown = bulletShown(bullet, edits);
   const isHidden = hidden.has(bullet.id);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(shown.text);
   const [busy, setBusy] = useState(false);
   const [rewriting, setRewriting] = useState(false);
+  const toCheck = needsCheck(bullet, shown.source, summary) && !checked.has(bullet.id) && !isHidden;
 
   const saveDraft = async () => {
     if (busy) return;
     const text = draft.trim();
-    if (!text || text === shown.text) return setEditing(false);
+    if (!text || text === shown.text.replace(/\*\*/g, "")) return setEditing(false);
     setBusy(true);
     const keywords = await fetch(`/api/cv-studio/${encodeURIComponent(n)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "keywords", text }) })
       .then((r) => (r.ok ? (r.json() as Promise<{ keywords: string[] }>) : { keywords: [] }))
@@ -149,45 +165,67 @@ function BulletRow({ n, bullet, parent, siblings, first, last, movable, edits, h
   };
 
   return (
-    <li data-bullet={bullet.id} className={cn("group rounded-lg border px-3 py-2 text-sm transition-colors", isHidden ? "border-dashed border-border opacity-50" : "border-transparent hover:border-border")}>
+    <li data-bullet={bullet.id} data-check={toCheck ? "" : undefined} className={cn("group relative rounded-lg border px-3 py-2 text-sm transition-colors", isHidden ? "border-dashed border-border opacity-50" : "border-transparent hover:border-border", toCheck && "bg-amber-50/60")}>
+      {toCheck && (
+        <span className="group/edge absolute -left-px bottom-1.5 top-1.5 w-[3px] rounded-full bg-amber-400" aria-hidden>
+          <span className="pointer-events-none absolute left-2 top-0 z-50 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-[11px] font-medium text-background opacity-0 shadow-md transition-opacity group-hover/edge:opacity-100">
+            Not in your CV. Make sure it is true.
+          </span>
+        </span>
+      )}
       {editing ? (
         <div>
           <textarea
             autoFocus
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            ref={(el) => { if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight + 2}px`; } }}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = `${e.target.scrollHeight + 2}px`;
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveDraft();
               if (e.key === "Escape") setEditing(false);
             }}
-            rows={3}
             aria-label="Edit bullet"
-            className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground focus:border-brand focus:outline-none"
+            className="block w-full resize-none overflow-hidden rounded-xl border border-brand/40 bg-background px-3 py-2.5 text-sm leading-relaxed text-foreground shadow-[0_0_0_3px_rgb(143_200_234/0.2)] focus:outline-none"
           />
-          <div className="mt-1.5 flex gap-2">
-            <button disabled={busy} onClick={saveDraft} className="rounded-full bg-brand px-3 py-0.5 text-xs font-medium text-brand-foreground disabled:opacity-60">
-              Use this wording
+          <div className="mt-2.5 flex items-center gap-2">
+            <button disabled={busy} onClick={saveDraft} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand px-3 text-sm font-medium text-brand-foreground transition-colors hover:bg-brand-200 disabled:opacity-60">
+              {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />} Save
             </button>
-            <button onClick={() => setEditing(false)} className="rounded-full px-3 py-0.5 text-xs text-muted hover:text-foreground">
+            <button onClick={() => setEditing(false)} className="inline-flex h-8 items-center rounded-lg px-3 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground">
               Cancel
             </button>
+            <span className="ml-auto hidden whitespace-nowrap text-xs text-faint xl:inline">⌘ + Enter to save</span>
           </div>
         </div>
       ) : (
         <p className={cn("leading-relaxed", isHidden ? "text-faint line-through" : "text-foreground")}>
-          {shown.source === "tailored" && bullet.change === "edited" && bullet.base !== null && bullet.similarity >= REWRITE_FLOOR ? <Diff before={bullet.base} after={bullet.tailored} /> : shown.text}
+          {shown.source === "tailored" && bullet.change === "edited" && bullet.base !== null && bullet.similarity >= REWRITE_FLOOR ? <Diff before={bullet.base} after={bullet.tailored} /> : <Bold text={shown.text} />}
         </p>
       )}
       {!editing && shown.source === "tailored" && bullet.change === "edited" && bullet.base !== null && bullet.similarity < REWRITE_FLOOR && (
         <p className="mt-1 text-xs text-faint">
-          <span className="font-medium uppercase tracking-wide">Rewritten from</span> {bullet.base}
+          <span className="font-medium">Your original:</span> {bullet.base}
         </p>
       )}
-      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-        {bullet.change === "new" && shown.source === "tailored" && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-800 dark:text-amber-300" title="No matching bullet in cv.md. Make sure it is true before you send it.">
-            <TriangleAlert className="size-3" /> Not in your base CV
-          </span>
+      {!editing && <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        {toCheck && (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">Not from your CV</span>
+        )}
+        {bullet.base !== null && bullet.change !== "same" && (
+          <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-800">Reworded</span>
+        )}
+        {toCheck && (
+          <button
+            type="button"
+            onClick={() => onCheck(bullet.id)}
+            className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-background px-2 py-0.5 text-[11px] font-medium text-amber-800 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
+          >
+            <Check className="size-3" /> Looks good
+          </button>
         )}
         {shown.source === "tailored" &&
           bullet.drivenBy.map((k) => (
@@ -207,27 +245,33 @@ function BulletRow({ n, bullet, parent, siblings, first, last, movable, edits, h
                 onClick={() => dispatch({ type: "use", id: bullet.id, use: { kind } })}
                 className={cn("rounded-full px-2 py-0.5 transition-colors", shown.source === kind ? "bg-brand-soft font-medium text-brand-text" : "text-muted hover:text-foreground")}
               >
-                {kind === "tailored" ? "Tailored" : "Original"}
+                {kind === "tailored" ? "Miao's version" : "My original"}
               </button>
             ))}
           </div>
         )}
-        <button className={iconButton} aria-label="Rewrite with AI" aria-expanded={rewriting} onClick={() => setRewriting((v) => !v)}>
-          <Sparkles className="size-3.5" />
-        </button>
-        <button
-          className={iconButton}
-          aria-label="Edit wording"
-          onClick={() => {
-            setDraft(shown.text);
-            setEditing(true);
-          }}
-        >
-          <Pencil className="size-3.5" />
-        </button>
-        {movable && <MoveButtons parent={parent} id={bullet.id} siblings={siblings} first={first} last={last} dispatch={dispatch} label="bullet" />}
-        {movable && <HideButton id={bullet.id} hidden={isHidden} dispatch={dispatch} label="bullet" />}
-      </div>
+        <span className="inline-flex items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 max-sm:opacity-100">
+          <Tip label="Rewrite with Miao">
+            <button className={iconButton} aria-label="Rewrite with AI" aria-expanded={rewriting} onClick={() => setRewriting((v) => !v)}>
+              <Sparkles className="size-3.5" />
+            </button>
+          </Tip>
+          <Tip label="Edit the text">
+            <button
+              className={iconButton}
+              aria-label="Edit wording"
+              onClick={() => {
+                setDraft(shown.text.replace(/\*\*/g, ""));
+                setEditing(true);
+              }}
+            >
+              <Pencil className="size-3.5" />
+            </button>
+          </Tip>
+          {movable && <MoveButtons parent={parent} id={bullet.id} siblings={siblings} first={first} last={last} dispatch={dispatch} label="bullet" />}
+          {movable && <HideButton id={bullet.id} hidden={isHidden} dispatch={dispatch} label="bullet" />}
+        </span>
+      </div>}
       {rewriting && <RewritePanel n={n} bullet={bullet} current={shown.text} onUse={(text, keywords) => { dispatch({ type: "use", id: bullet.id, use: { kind: "custom", text, keywords } }); setRewriting(false); }} />}
     </li>
   );
@@ -303,13 +347,18 @@ function Diff({ before, after }: { before: string; after: string }) {
     <>
       {wordDiff(before, after).map((part, k) =>
         part.op === "same" ? (
-          <span key={k}>{part.text}</span>
+          <span key={k}>{part.text.replace(/\*\*/g, "")}</span>
         ) : part.op === "del" ? (
-          <del key={k} className="rounded bg-red-500/10 text-red-700 decoration-red-400/70 dark:text-red-300">{part.text}</del>
+          <del key={k} className="rounded bg-red-500/10 text-red-700 decoration-red-400/70 dark:text-red-300">{part.text.replace(/\*\*/g, "")}</del>
         ) : (
-          <ins key={k} className="rounded bg-emerald-500/15 text-emerald-800 no-underline dark:text-emerald-300">{part.text}</ins>
+          <ins key={k} className="rounded bg-emerald-500/15 text-emerald-800 no-underline dark:text-emerald-300">{part.text.replace(/\*\*/g, "")}</ins>
         ),
       )}
     </>
   );
+}
+
+/** Fork: a line Miao wrote from scratch (no match in cv.md), outside the summary. */
+export function needsCheck(bullet: StudioBullet, source: string, summary: boolean): boolean {
+  return !summary && bullet.change === "new" && source === "tailored";
 }

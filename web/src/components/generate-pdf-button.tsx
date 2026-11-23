@@ -1,17 +1,15 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FileDown, Loader2, FileText, RotateCcw, SlidersHorizontal, TriangleAlert } from "lucide-react";
+import { FilePlus2, FileText, FileUser, Hourglass, Loader2, Sparkles, SquarePen, TriangleAlert } from "lucide-react";
 import { useJobs } from "@/components/jobs/job-store";
-import { CostBadge } from "@/components/cost/cost-badge";
-import { CvPdfFileActions } from "@/components/cv-pdf-file-actions";
+import { DocCard, iconPrimary, iconSecondary } from "@/components/ui/doc-card";
+import { Tip } from "@/components/ui/tip";
+import { PdfViewer } from "@/components/pipeline/pdf-viewer";
 import { pdfButtonState, pdfJobRefreshesReport, type PdfFailure } from "@/lib/pdf-button-state.mjs";
 import { pipelineQuery } from "@/lib/pipeline-navigation.mjs";
-
-const quietPill =
-  "inline-flex items-center justify-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted transition-colors hover:border-brand/40 hover:text-brand-text max-sm:min-h-[44px]";
 
 // Fires the real career-ops `pdf` mode (worker kind "pdf") to generate an
 // ATS-optimized CV tailored to THIS offer → output/cv-… + marks the tracker.
@@ -38,58 +36,58 @@ export function GeneratePdfButton({ n, company, onDisk }: { n: string; company: 
     startJob({ title: `CV PDF · ${company}`, subtitle: "tailored for this role", kind: "pdf", input: n, page: `/pipeline/${n}` });
 
   const state = pdfButtonState(job, onDisk);
+  const [confirming, setConfirming] = useState(false);
+  const [viewing, setViewing] = useState(false);
 
+  const icon = <FileUser className="size-5" />;
   if (state.kind === "running")
     return (
-      <Link href={`/jobs/${state.jobId}${jobQuery}`} className="inline-flex items-center justify-center gap-1.5 rounded-full border border-brand/40 bg-brand-soft px-3 py-1 text-xs font-medium text-brand-text max-sm:min-h-[44px]">
-        <Loader2 className="size-3.5 animate-spin" /> Generating CV…
-      </Link>
+      <DocCard icon={<Loader2 className="size-5 animate-spin" />} title="CV" status="Miao is writing it…" tone="busy">
+        <Tip label="See progress" align="end">
+          <Link href={`/jobs/${state.jobId}${jobQuery}`} aria-label="See progress" className={iconSecondary}><Hourglass className="size-4" /></Link>
+        </Tip>
+      </DocCard>
     );
 
   if (state.kind === "ready")
     return (
-      <span className="inline-flex flex-wrap items-center gap-1">
-        <a
-          href={viewHref}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center justify-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-800 transition-colors hover:bg-emerald-500/15 dark:text-emerald-400 max-sm:min-h-[44px]"
-        >
-          <FileText className="size-3.5" /> View tailored CV
-        </a>
-        <CvPdfFileActions viewHref={viewHref} className={quietPill} />
-        <Link
-          href={studioHref}
-          className="inline-flex items-center justify-center gap-1.5 rounded-full border border-brand/40 bg-brand-soft px-3 py-1 text-xs font-medium text-brand-text transition-colors hover:bg-brand-soft/70 max-sm:min-h-[44px]"
-        >
-          <SlidersHorizontal className="size-3.5" /> Review and customize
-        </Link>
-        <button
-          onClick={generate}
-          title="Regenerate the tailored CV"
-          className="inline-flex items-center justify-center rounded-full p-1 text-faint transition-colors hover:text-brand-text max-sm:min-h-[44px] max-sm:min-w-[44px]"
-        >
-          <RotateCcw className="size-3" />
-        </button>
-        <FailureNote failure={state.failure} jobQuery={jobQuery} />
-      </span>
+      <DocCard
+        icon={icon}
+        title="CV"
+        status="Ready"
+        tone="ready"
+        footer={
+          <>
+            {confirming && (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm">
+                <span className="text-foreground">Miao rewrites the CV from scratch. Your edits will be lost.</span>
+                <button onClick={() => { setConfirming(false); generate(); }} className="ml-auto rounded-lg bg-foreground px-3 py-1 text-xs font-medium text-background">Rewrite</button>
+                <button onClick={() => setConfirming(false)} className="rounded-lg px-2 py-1 text-xs text-muted hover:text-foreground">Cancel</button>
+              </div>
+            )}
+            <FailureNote failure={state.failure} jobQuery={jobQuery} />
+          </>
+        }
+      >
+        <Tip label="Open CV">
+          <button onClick={() => setViewing(true)} aria-label="Open CV" className={iconPrimary}><FileText className="size-4" /></button>
+        </Tip>
+        <PdfViewer src={viewHref} title={`CV · ${company}`} open={viewing} onClose={() => setViewing(false)} />
+        <Tip label="Edit CV">
+          <Link href={studioHref} aria-label="Edit CV" className={iconSecondary}><SquarePen className="size-4" /></Link>
+        </Tip>
+        <Tip label="Rewrite it with Miao" align="end">
+          <button onClick={() => setConfirming(true)} aria-label="New version" className={iconSecondary}><Sparkles className="size-4" /></button>
+        </Tip>
+      </DocCard>
     );
 
-  // Point-of-action cost affordance: generating a tailored CV runs the user's
-  // AI (spends tokens). Surface it right on the trigger so cost is never a
-  // surprise — the community's #1 pain (mirrors Explore's token-honesty).
   return (
-    <span className="inline-flex flex-wrap items-center gap-1.5">
-      <button
-        onClick={generate}
-        className="inline-flex items-center justify-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted transition-colors hover:border-brand/40 hover:text-brand-text max-sm:min-h-[44px]"
-        title="Generate an ATS-optimized CV tailored to this role"
-      >
-        <FileDown className="size-3.5" /> Generate tailored CV (PDF)
-      </button>
-      <CostBadge kind="spend" size="xs" />
-      <FailureNote failure={state.failure} jobQuery={jobQuery} />
-    </span>
+    <DocCard icon={icon} title="CV" status="Not created yet" footer={<FailureNote failure={state.failure} jobQuery={jobQuery} />}>
+      <Tip label="Create CV for this job" align="end">
+        <button onClick={generate} aria-label="Create CV" className={iconPrimary}><FilePlus2 className="size-4" /></button>
+      </Tip>
+    </DocCard>
   );
 }
 

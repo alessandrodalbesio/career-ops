@@ -1,10 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import { SkillGaps } from "@/components/skill-gaps";
-import remarkGfm from "remark-gfm";
-import { noMarkdownImages } from "@/lib/markdown-options.mjs";
+import { NotionEditor } from "@/components/notion-editor";
+import { JOB_PAGE_FRAME } from "@/components/page-frame";
 import { Check, CloudOff, Loader2, Save, Upload, X } from "lucide-react";
 
 import { Tip } from "@/components/ui/tip";
@@ -55,7 +53,18 @@ function readDraft() {
 }
 
 export function CvEditor() {
+  // Fork: the visual editor owns typing; any other change to the text (first load,
+  // an imported CV) remounts it with the new content.
+  const emitted = useRef<string | null>(null);
+  const [editorKey, setEditorKey] = useState(0);
   const [state, dispatch] = useReducer(editorReducer, initialEditor());
+  useEffect(() => {
+    if (state.phase !== "ready") return;
+    if (state.content !== emitted.current) {
+      emitted.current = state.content;
+      setEditorKey((k) => k + 1);
+    }
+  }, [state.phase, state.content]);
   const [importing, setImporting] = useState(false);
   const [importSaving, setImportSaving] = useState(false);
   const stateRef = useRef(state);
@@ -184,12 +193,12 @@ export function CvEditor() {
   const status = editorStatus(state);
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8">
+    <div className={JOB_PAGE_FRAME}>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl tracking-tight text-landing">CV editor</h1>
+          <h1 className="font-display text-2xl tracking-tight text-landing">Your CV</h1>
           <p className="mt-1 text-sm text-muted">
-            Edit <code className="text-foreground">cv.md</code> with live preview.
+            Your base CV. Miao tailors it for each job.
             {state.phase === "ready" && !state.exists && state.content === "" && (
               <span className="ml-1 text-faint">No cv.md yet — start typing to create it.</span>
             )}
@@ -281,29 +290,18 @@ export function CvEditor() {
       {state.phase === "loading" ? (
         <div className="mt-6 text-sm text-muted">Loading…</div>
       ) : state.phase === "load-error" ? null : (
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          <textarea
-            aria-label="CV Markdown"
-            disabled={importing}
-            value={state.content}
-            onChange={(e) => dispatch({ type: "edit", content: e.target.value })}
-            spellCheck={false}
-            placeholder="# Your Name&#10;&#10;## Summary&#10;..."
-            className="min-h-[60vh] w-full resize-none rounded-2xl border border-border bg-surface/50 p-4 font-mono text-sm leading-relaxed outline-none transition-colors placeholder:text-faint focus:border-brand/40"
+        <div className={`mt-6 rounded-2xl border border-border bg-white py-10 pl-14 pr-8 shadow-sm sm:pl-16 sm:pr-14 ${importing ? "pointer-events-none opacity-50" : ""}`}>
+          <NotionEditor
+            key={editorKey}
+            format="markdown"
+            initialHtml={state.content}
+            editable={!importing}
+            placeholder="Start your CV here, or type '/' for blocks"
+            onChange={(md) => { emitted.current = md; dispatch({ type: "edit", content: md }); }}
           />
-          <article className="report-prose min-h-[60vh] [&_p]:whitespace-pre-line overflow-auto rounded-2xl border border-border bg-surface/30 p-5">
-            {state.content.trim() ? (
-              <ReactMarkdown remarkPlugins={[remarkGfm]} {...noMarkdownImages}>{state.content}</ReactMarkdown>
-            ) : (
-              <p className="text-muted">Preview appears here.</p>
-            )}
-          </article>
         </div>
       )}
 
-      {/* Below the editor: the gaps are context for what to write next, and they
-          belong after the document rather than competing with it. */}
-      <SkillGaps />
     </div>
   );
 }

@@ -9,6 +9,9 @@ export type PageFrameWidth = keyof typeof pageFrameWidthClass;
 
 const framePad = "mx-auto px-4 py-6 sm:px-6 sm:py-8 max-sm:pb-24";
 
+/** Fork: every page under /pipeline/<id> (job, CV studio, cover letter, apply) uses this one width. */
+export const JOB_PAGE_FRAME = "mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8 max-sm:pb-24";
+
 /** `wide` is for tables and lists. Reading pages stay on the default cap. */
 export function PageFrame({
   children,

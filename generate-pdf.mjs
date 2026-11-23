@@ -3438,7 +3438,7 @@ async function renderInPage(browser, html, outputPath, opts = {}) {
     await page.evaluate(() => document.fonts.ready);
 
     // Generate PDF
-    const pdfBuffer = await page.pdf({
+    const renderPdf = () => page.pdf({
       printBackground: true,
       margin: {
         top: '0',
@@ -3448,9 +3448,22 @@ async function renderInPage(browser, html, outputPath, opts = {}) {
       },
       preferCSSPageSize: true,
     });
+    let pdfBuffer = await renderPdf();
 
     // Read the root page-tree count so page-like text in streams is ignored.
-    const pageCount = countRenderedPdfPages(pdfBuffer);
+    let pageCount = countRenderedPdfPages(pdfBuffer);
+
+    // Fork (Miao): a one-page CV or cover letter that spills onto page 2 is shrunk a little,
+    // in small steps down to 85%, until it fits. Only for CVs with a one-page
+    // budget; anything that still does not fit keeps the overflow handling below.
+    if ((artifactKind === 'cv' || artifactKind === 'cover') && budget.maxPages === 1 && pageCount > 1 && typeof page.evaluate === 'function') {
+      for (let zoom = 0.97; zoom >= 0.849 && pageCount > 1; zoom -= 0.03) {
+        await page.evaluate((z) => { document.documentElement.style.zoom = String(z); }, zoom);
+        pdfBuffer = await renderPdf();
+        pageCount = countRenderedPdfPages(pdfBuffer);
+        if (pageCount === 1) console.log(`🔎 Shrunk to ${Math.round(zoom * 100)}% to fit one page`);
+      }
+    }
 
     // An overflow never reaches outputPath, strict or not. A caller that
     // restores its own inputs on failure (CV Studio restores the edited HTML)

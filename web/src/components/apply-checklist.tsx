@@ -62,7 +62,7 @@ export function ApplyChecklist({
   pdfNote?: string | null;
 }) {
   return (
-    <PageFrame className="max-w-3xl">
+    <PageFrame className="max-w-5xl">
       <BackLink href={backHref} className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-brand-text">
         <ArrowLeft className="size-4" /> Pipeline
       </BackLink>

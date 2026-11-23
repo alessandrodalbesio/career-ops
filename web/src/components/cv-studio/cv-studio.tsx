@@ -1,16 +1,21 @@
 "use client";
 
+import { JOB_PAGE_FRAME } from "@/components/page-frame";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Check, FileText, Loader2, RotateCcw, Undo2 } from "lucide-react";
+import { ArrowLeft, Check, FileText, Loader2, RotateCcw, Save, Undo2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { BackLink } from "@/components/back-link";
-import { CvPdfFileActions } from "@/components/cv-pdf-file-actions";
+import { Tip } from "@/components/ui/tip";
+
+const iconBtn =
+  "inline-flex size-9 items-center justify-center rounded-xl border border-border bg-surface text-muted transition-all hover:-translate-y-px hover:border-brand-text/30 hover:text-foreground active:translate-y-0 active:scale-95 disabled:opacity-40 disabled:hover:translate-y-0 max-sm:size-11";
 import { pipelineQuery } from "@/lib/pipeline-navigation.mjs";
 import { arrange, renderBlocks, type BlockTree } from "@/lib/cv-studio/html-blocks.mjs";
-import { applyRecordedEdit, emptyEdits, isStudioUndoKey, resolveStudio, studioReducer, type StudioAction, type StudioDoc, type StudioEdits } from "@/lib/cv-studio/studio.mjs";
+import { bulletShown, applyRecordedEdit, emptyEdits, isStudioUndoKey, resolveStudio, studioReducer, type StudioAction, type StudioDoc, type StudioEdits } from "@/lib/cv-studio/studio.mjs";
 import { editSaveStatus, inflightEdits, ownsStatus, postWroteEdits, shouldPutAfterPost, shouldSendEdits } from "@/lib/cv-studio/put-order.mjs";
-import { SectionCard } from "./section-card";
+import { SectionCard, isSummarySection, needsCheck } from "./section-card";
+import { friendlyWarnings, type FriendlyItem } from "@/lib/cv-studio/friendly-warnings";
 import { CvPreview } from "./cv-preview";
 import { CoverageMeter } from "./coverage-meter";
 
@@ -49,9 +54,9 @@ export function CvStudio({ n }: { n: string }) {
   }, [n]);
 
   return (
-    <div className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6">
+    <div className={JOB_PAGE_FRAME}>
       <BackLink href={reportHref} className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-brand-text">
-        <ArrowLeft className="size-4" /> Report #{n}
+        <ArrowLeft className="size-4" /> Back to the job
       </BackLink>
       {load.kind === "loading" && <div className="mt-6 h-[70vh] animate-pulse rounded-2xl bg-muted/15" aria-label="Loading the CV Studio" />}
       {load.kind === "error" && (
@@ -95,6 +100,11 @@ function Studio({ n, data }: { n: string; data: Loaded }) {
     editsRef.current = prev;
     dispatchEdit({ type: "replace", edits: prev });
   }, []);
+  // Fork: the CV is always one page, worded close to her own CV (no choice shown).
+  useEffect(() => {
+    if (edits.preset.length !== "one-page" || edits.preset.tone !== "conservative")
+      dispatchEdit({ type: "preset", preset: { length: "one-page", tone: "conservative" } });
+  }, [edits.preset.length, edits.preset.tone]);
   const rejectedOnLoad = data.pdfExport?.ok === false;
   const [pdfRejected, setPdfRejected] = useState(rejectedOnLoad);
   const [save, setSave] = useState<SaveState>(rejectedOnLoad ? { kind: "failed", error: data.pdfExport?.error ?? "Saving failed." } : { kind: "idle" });
@@ -285,36 +295,81 @@ function Studio({ n, data }: { n: string; data: Loaded }) {
     });
   }, [recordEdit, send]);
 
+  // Fork: lines Miao wrote from scratch that she has not marked "Looks good" yet.
+  const checkKey = `miao:cv-checked:${n}:${doc.sourceHash}`;
+  const [checked, setChecked] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(checkKey) ?? "[]") as string[]); } catch { return new Set(); }
+  });
+  const onCheck = useCallback((id: string) => {
+    setChecked((prev) => {
+      const next = new Set(prev).add(id);
+      try { localStorage.setItem(checkKey, JSON.stringify([...next])); } catch { /* storage blocked */ }
+      return next;
+    });
+  }, [checkKey]);
+  const toCheck = doc.sections
+    .filter((sec) => !isSummarySection(sec.title) && !resolved.view.hidden.has(sec.id))
+    .flatMap((sec) => sec.items.filter((it) => !resolved.view.hidden.has(it.id)).flatMap((it) => it.bullets))
+    .filter((b) => needsCheck(b, bulletShown(b, edits).source, false) && !checked.has(b.id) && !resolved.view.hidden.has(b.id));
+  const jumpToNext = () => {
+    const el = document.querySelector<HTMLElement>("[data-check]");
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    el?.animate([{ boxShadow: "0 0 0 3px rgb(251 191 36 / .5)" }, { boxShadow: "0 0 0 0 transparent" }], { duration: 900 });
+  };
+
   const changed = doc.sections.flatMap((s) => s.items.flatMap((i) => i.bullets)).filter((b) => b.change !== "same").length;
   const pdfHref = `/api/cv-pdf?n=${encodeURIComponent(data.reportNum)}`;
 
   return (
     <>
-      <header className="mt-4 flex flex-wrap items-end justify-between gap-4">
+      <header className="mt-4 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="font-mono text-xs uppercase tracking-[0.18em] text-faint">CV Studio</p>
-          <h1 className="mt-1 font-display text-3xl tracking-tight text-landing">{data.company}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Your CV for {data.company}</h1>
           <p className="mt-1 text-sm text-muted">
-            {changed} {changed === 1 ? "change" : "changes"} from your base CV. Review each one, then save the version you will send.
+            Miao changed {changed} {changed === 1 ? "line" : "lines"} from your base CV.
           </p>
+          {toCheck.length > 0 ? (
+            <button
+              type="button"
+              onClick={jumpToNext}
+              className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-100"
+            >
+              <span className="size-2 rounded-full bg-amber-400" />
+              {toCheck.length} {toCheck.length === 1 ? "line" : "lines"} not from your CV
+            </button>
+          ) : (
+            <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-800">
+              <Check className="size-3.5" /> Every line checked
+            </p>
+          )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Segmented label="Length" value={edits.preset.length} options={[["full", "Full"], ["one-page", "One page"]]} onChange={(v) => recordEdit({ type: "preset", preset: { length: v as "full" | "one-page" } })} />
-          <Segmented label="Tone" value={edits.preset.tone} options={[["tailored", "Tailored"], ["conservative", "Conservative"]]} onChange={(v) => recordEdit({ type: "preset", preset: { tone: v as "tailored" | "conservative" } })} />
-          <button type="button" onClick={undo} disabled={!canUndo} className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs text-muted transition-colors hover:border-brand/40 hover:text-brand-text disabled:opacity-40">
-            <Undo2 className="size-3.5" /> Undo
-          </button>
-          <button type="button" onClick={resetStudio} className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs text-muted transition-colors hover:border-brand/40 hover:text-brand-text">
-            <RotateCcw className="size-3.5" /> Reset
-          </button>
-          <p role="status" className="text-xs text-muted">{editStatus}</p>
-          <button
-            onClick={saveForApply}
-            disabled={save.kind === "saving"}
-            className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-1.5 text-sm font-medium text-brand-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
-          >
-            {save.kind === "saving" ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />} Save for apply
-          </button>
+        <div className="flex items-center gap-1.5">
+          <p role="status" className="sr-only">{editStatus}</p>
+          <Tip label="Undo last change">
+            <button type="button" onClick={undo} disabled={!canUndo} aria-label="Undo" className={iconBtn}>
+              <Undo2 className="size-4" />
+            </button>
+          </Tip>
+          <Tip label="Start over from Miao's version">
+            <button
+              type="button"
+              aria-label="Start over"
+              onClick={() => { if (window.confirm("Throw away all your changes and go back to Miao's version?")) resetStudio(); }}
+              className={iconBtn}
+            >
+              <RotateCcw className="size-4" />
+            </button>
+          </Tip>
+          <Tip label={save.kind === "saved" ? "Saved as PDF" : "Save CV as PDF"} align="end">
+            <button
+              onClick={saveForApply}
+              disabled={save.kind === "saving"}
+              aria-label="Save CV"
+              className="inline-flex size-9 items-center justify-center rounded-xl bg-brand text-brand-foreground shadow-sm transition-all hover:-translate-y-px hover:bg-brand-200 active:translate-y-0 active:scale-95 disabled:opacity-60 max-sm:size-11"
+            >
+              {save.kind === "saving" ? <Loader2 className="size-4 animate-spin" /> : save.kind === "saved" ? <Check className="size-4" strokeWidth={2.5} /> : <Save className="size-4" />}
+            </button>
+          </Tip>
         </div>
       </header>
 
@@ -324,56 +379,35 @@ function Studio({ n, data }: { n: string; data: Loaded }) {
         <Notice tone={save.indexed ? "ok" : "warn"}>
           {save.indexed ? (
             <>
-              Saved. Apply now uploads this version.{" "}
+              Saved.{" "}
               <a href={pdfHref} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium underline">
-                <FileText className="size-3.5" /> Open {save.pdf}
-              </a>{" "}
-              <CvPdfFileActions viewHref={pdfHref} className="inline-flex items-center gap-1 font-medium underline" />
+                <FileText className="size-3.5" /> Open the PDF
+              </a>
             </>
           ) : (
             <>Saved {save.pdf}, but data/pdf-index.tsv was not updated, so Apply still uploads the earlier PDF.</>
           )}
-          {save.warnings.filter((w) => !/cv-facts\.json/.test(w)).map((w) => (
-            <span key={w} className="mt-1 block text-xs opacity-80">{w}</span>
-          ))}
         </Notice>
       )}
+      {save.kind === "saved" && <DoubleCheck items={friendlyWarnings(save.warnings)} />}
       {save.kind === "outdated" && (
-        <Notice tone="warn">Saved {save.pdf} from the CV as it was when you clicked Save. You changed it since, so Save for apply again before you apply.</Notice>
+        <Notice tone="warn">Saved {save.pdf} from the CV as it was when you clicked Save. You changed it since, so save again.</Notice>
       )}
       {save.kind === "failed" && <Notice tone="error">{save.error}</Notice>}
       {autosaveError && <Notice tone="error">{autosaveError}</Notice>}
 
-      <div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
+      <div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="space-y-4">
           <CoverageMeter coverage={resolved.coverage} dropped={dropped} />
           {arrange(doc.sections, edits.order.root).map((s, k, all) => (
-            <SectionCard key={s.id} n={n} section={s} edits={edits} hidden={resolved.view.hidden} dispatch={recordEdit} siblings={all.map((x) => x.id)} first={k === 0} last={k === all.length - 1} />
+            <SectionCard key={s.id} n={n} section={s} edits={edits} hidden={resolved.view.hidden} dispatch={recordEdit} checked={checked} onCheck={onCheck} siblings={all.map((x) => x.id)} first={k === 0} last={k === all.length - 1} />
           ))}
         </div>
         <div className="lg:sticky lg:top-4 lg:self-start">
-          <CvPreview html={html} />
+          <CvPreview html={html} pdfHref={pdfHref} />
         </div>
       </div>
     </>
-  );
-}
-
-function Segmented({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange: (v: string) => void }) {
-  return (
-    <div role="radiogroup" aria-label={label} className="inline-flex rounded-full border border-border p-0.5">
-      {options.map(([v, text]) => (
-        <button
-          key={v}
-          role="radio"
-          aria-checked={value === v}
-          onClick={() => onChange(v)}
-          className={cn("rounded-full px-3 py-1 text-xs transition-colors", value === v ? "bg-brand-soft font-medium text-brand-text" : "text-muted hover:text-foreground")}
-        >
-          {text}
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -384,4 +418,38 @@ function Notice({ tone, children }: { tone: "ok" | "warn" | "error"; children: R
     error: "border-red-500/40 bg-red-500/10 text-red-800 dark:text-red-300",
   }[tone];
   return <div role={tone === "error" ? "alert" : "status"} className={cn("mt-4 rounded-xl border px-4 py-2.5 text-sm", styles)}>{children}</div>;
+}
+
+// Fork: the save-time fact check, in plain words.
+function DoubleCheck({ items }: { items: FriendlyItem[] }) {
+  if (!items.length) return null;
+  return (
+    <div role="status" className="mt-3 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+      <p className="font-medium">
+        {items.length === 1 ? "1 thing" : `${items.length} things`} to double-check before you send it
+      </p>
+      <ul className="mt-2 space-y-2">
+        {items.map((it, i) => (
+          <li key={i} className="flex gap-2">
+            <span className="mt-2 size-1.5 shrink-0 rounded-full bg-amber-500" />
+            <div className="min-w-0">
+              {it.kind === "differs" && (
+                <>
+                  <p>This line says more than your CV:</p>
+                  <p className="mt-0.5 text-amber-900/80">&ldquo;{it.cv}&rdquo;</p>
+                  <p className="mt-1 text-xs text-amber-900/70">Your CV says: &ldquo;{it.source}&rdquo;</p>
+                </>
+              )}
+              {it.kind === "skills" && (
+                <p>
+                  Skills Miao added that are not in your CV: <span className="font-medium">{it.names.join(", ")}</span>. Keep them only if they fit you.
+                </p>
+              )}
+              {it.kind === "other" && <p>{it.text}</p>}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }

@@ -3,13 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { contentHeightPx, frameHeightAfterProbe, frameHeightPx, PREVIEW_PAGE_PX, previewPageCount } from "@/lib/cv-studio/page-estimate.mjs";
 import { previewHtml } from "@/lib/cv-studio/preview-html.mjs";
+import { PdfViewer } from "@/components/pipeline/pdf-viewer";
 
 const PAGE_WIDTH = 816;
 
-export function CvPreview({ html }: { html: string }) {
+export function CvPreview({ html, pdfHref }: { html: string; pdfHref?: string }) {
   const box = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLIFrameElement>(null);
   const [scale, setScale] = useState(0.7);
+  const [viewing, setViewing] = useState(false);
   const [contentPx, setContentPx] = useState(0);
   const [framePx, setFramePx] = useState(0);
 
@@ -43,8 +45,15 @@ export function CvPreview({ html }: { html: string }) {
   return (
     <section aria-label="Live preview" className="rounded-2xl border border-border bg-surface/40 p-3">
       <div className="mb-2 flex items-center justify-between px-1 text-xs text-muted">
-        <span>Live preview</span>
-        <span>{pages} page{pages === 1 ? "" : "s"} (estimate)</span>
+        <span>Preview · {pages} page{pages === 1 ? "" : "s"}</span>
+        <span className="flex items-center gap-3">
+          {pdfHref && (
+            <>
+              <button type="button" onClick={() => setViewing(true)} className="text-brand-text hover:underline">Open saved PDF</button>
+              <PdfViewer src={pdfHref} title="Saved CV" open={viewing} onClose={() => setViewing(false)} />
+            </>
+          )}
+        </span>
       </div>
       <div ref={box} className="max-h-[80vh] overflow-auto rounded-lg bg-white shadow-sm">
         <div style={{ height: frameHeight * scale }}>
