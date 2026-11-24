@@ -18,6 +18,7 @@ import { SectionCard, isSummarySection, needsCheck } from "./section-card";
 import { friendlyWarnings, type FriendlyItem } from "@/lib/cv-studio/friendly-warnings";
 import { CvPreview } from "./cv-preview";
 import { CoverageMeter } from "./coverage-meter";
+import { FullCv } from "./full-cv";
 
 type Loaded = { ok: true; reportNum: string; company: string; file: string; tree: BlockTree; doc: StudioDoc; edits: StudioEdits; stale: boolean; hasBase: boolean; pdfExport?: { ok: false; error: string } | null };
 type LoadState = { kind: "loading" } | { kind: "error"; reason: string } | { kind: "ready"; data: Loaded };
@@ -317,6 +318,7 @@ function Studio({ n, data }: { n: string; data: Loaded }) {
     el?.animate([{ boxShadow: "0 0 0 3px rgb(251 191 36 / .5)" }, { boxShadow: "0 0 0 0 transparent" }], { duration: 900 });
   };
 
+  const [pane, setPane] = useState<"tailored" | "full">("tailored");
   const changed = doc.sections.flatMap((s) => s.items.flatMap((i) => i.bullets)).filter((b) => b.change !== "same").length;
   const pdfHref = `/api/cv-pdf?n=${encodeURIComponent(data.reportNum)}`;
 
@@ -404,7 +406,28 @@ function Studio({ n, data }: { n: string; data: Loaded }) {
           ))}
         </div>
         <div className="lg:sticky lg:top-4 lg:self-start">
-          <CvPreview html={html} pdfHref={pdfHref} />
+          {/* Fork: switch between this tailored CV and the whole base CV. */}
+          <div role="tablist" aria-label="Which CV" className="mb-2 inline-flex rounded-lg border border-border bg-surface p-0.5 text-sm">
+            {(["tailored", "full"] as const).map((t) => (
+              <button
+                key={t}
+                role="tab"
+                aria-selected={pane === t}
+                onClick={() => setPane(t)}
+                className={cn("rounded-md px-3 py-1 transition-colors", pane === t ? "bg-brand-soft font-medium text-brand-text" : "text-muted hover:text-foreground")}
+              >
+                {t === "tailored" ? `CV for ${data.company}` : "Your full CV"}
+              </button>
+            ))}
+          </div>
+          {pane === "tailored" ? (
+            <CvPreview html={html} pdfHref={pdfHref} />
+          ) : (
+            <section aria-label="Your full CV" className="max-h-[80vh] overflow-auto rounded-2xl border border-border bg-surface">
+              <p className="border-b border-border px-5 py-2.5 text-xs text-muted">Everything in your CV, including what Miao left out. Copy a line, then use + Add a line.</p>
+              <FullCv />
+            </section>
+          )}
         </div>
       </div>
     </>

@@ -206,6 +206,7 @@ export function parseEdits(raw, sourceHash) {
 
 /**
  * @typedef {{type: "use", id: string, use: BulletUse}
+ *   | {type: "unuse", id: string}
  *   | {type: "toggle", id: string}
  *   | {type: "move", parent: string, id: string, by: -1|1, siblings: string[]}
  *   | {type: "restore", item: string, index: number}
@@ -240,6 +241,12 @@ export function studioReducer(edits, action, doc) {
       const chosen = edits.use[action.id];
       if (chosen && sameBulletUse(chosen, action.use)) return edits;
       return { ...edits, use: { ...edits.use, [action.id]: action.use } };
+    }
+    case "unuse": {
+      if (!(action.id in edits.use)) return edits;
+      const use = { ...edits.use };
+      delete use[action.id];
+      return { ...edits, use };
     }
     case "toggle": {
       const isHidden = hiddenSet(doc, edits).has(action.id);

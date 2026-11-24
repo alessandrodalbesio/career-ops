@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowDown, ArrowUp, Check, Eye, EyeOff, Loader2, Pencil, Plus, Sparkles, Trash2, Undo2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { ArrowDown, ArrowUp, Bold as BoldIcon, Check, Eye, EyeOff, Italic, Loader2, Pencil, Plus, Sparkles, Trash2, Undo2 } from "lucide-react";
 import { readSavedCliId } from "@/lib/saved-cli";
 import { cn } from "@/lib/cn";
 import { Tip } from "@/components/ui/tip";
@@ -23,7 +23,49 @@ export const isSummarySection = (title: string) => /summary|profile|about/i.test
 
 // Fork: show **bold** as real bold (the tailored CV writes bold as Markdown).
 export function Bold({ text }: { text: string }) {
-  return <>{text.split(/(\*\*[^*]+\*\*)/g).map((part, k) => (/^\*\*[^*]+\*\*$/.test(part) ? <strong key={k} className="font-semibold">{part.slice(2, -2)}</strong> : <span key={k}>{part}</span>))}</>;
+  return (
+    <>
+      {text.split(/(\*\*[^*]+\*\*|(?<![\p{L}\p{N}_])_[^_\s](?:[^_\n]*[^_\s])?_(?![\p{L}\p{N}_]))/gu).map((part, k) =>
+        /^\*\*[^*]+\*\*$/.test(part) ? <strong key={k} className="font-semibold">{part.slice(2, -2)}</strong>
+        : /^_.+_$/.test(part) ? <em key={k}>{part.slice(1, -1)}</em>
+        : <span key={k}>{part}</span>,
+      )}
+    </>
+  );
+}
+
+// Fork: bold / italic for a textarea. Wraps the selection in **…** or _…_
+// (again to undo), which the preview and the PDF show as bold and italic.
+function wrapSelection(el: HTMLTextAreaElement | null, mark: string, onChange: (v: string) => void) {
+  if (!el) return;
+  const { selectionStart: a, selectionEnd: b, value } = el;
+  const sel = value.slice(a, b);
+  const on = sel.length >= mark.length * 2 && sel.startsWith(mark) && sel.endsWith(mark);
+  const inner = on ? sel.slice(mark.length, sel.length - mark.length) : sel || "text";
+  onChange(value.slice(0, a) + (on ? inner : mark + inner + mark) + value.slice(b));
+  requestAnimationFrame(() => {
+    el.focus();
+    const start = on ? a : a + mark.length;
+    el.setSelectionRange(start, start + inner.length);
+  });
+}
+/** ⌘B / ⌘I inside a textarea. True when it handled the key. */
+function formatShortcut(e: React.KeyboardEvent<HTMLTextAreaElement>, onChange: (v: string) => void) {
+  if (!(e.metaKey || e.ctrlKey)) return false;
+  const k = e.key.toLowerCase();
+  if (k !== "b" && k !== "i") return false;
+  e.preventDefault();
+  wrapSelection(e.currentTarget, k === "b" ? "**" : "_", onChange);
+  return true;
+}
+function FormatButtons({ area, onChange }: { area: React.RefObject<HTMLTextAreaElement | null>; onChange: (v: string) => void }) {
+  const btn = "inline-flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-hover hover:text-foreground";
+  return (
+    <span className="inline-flex items-center gap-0.5 rounded-lg border border-border p-0.5">
+      <Tip label="Bold (⌘B)"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => wrapSelection(area.current, "**", onChange)} aria-label="Bold" className={btn}><BoldIcon className="size-3.5" /></button></Tip>
+      <Tip label="Italic (⌘I)"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => wrapSelection(area.current, "_", onChange)} aria-label="Italic" className={btn}><Italic className="size-3.5" /></button></Tip>
+    </span>
+  );
 }
 
 const iconButton = "inline-flex size-7 items-center justify-center rounded-md text-faint transition-colors hover:bg-surface-hover hover:text-foreground disabled:opacity-30 max-sm:size-11";
@@ -153,6 +195,9 @@ function ItemBlock({ item, section, siblings, first, last, ...common }: Common &
 function LineEditor({ initial, onSave, onCancel, label }: { initial: string; onSave: (text: string) => void; onCancel: () => void; label: string }) {
   const [draft, setDraft] = useState(initial);
   const save = () => (draft.trim() ? onSave(draft.trim()) : onCancel());
+  const area = useRef<HTMLTextAreaElement | null>(null);
+  const grow = (el: HTMLTextAreaElement | null) => { if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight + 2}px`; } };
+  const setText = (v: string) => { setDraft(v); requestAnimationFrame(() => grow(area.current)); };
   return (
     <div>
       <textarea
@@ -160,13 +205,10 @@ function LineEditor({ initial, onSave, onCancel, label }: { initial: string; onS
         value={draft}
         rows={2}
         placeholder="Write the new line…"
-        ref={(el) => { if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight + 2}px`; } }}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          e.target.style.height = "auto";
-          e.target.style.height = `${e.target.scrollHeight + 2}px`;
-        }}
+        ref={(el) => { area.current = el; grow(el); }}
+        onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
+          if (formatShortcut(e, setText)) return;
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) save();
           if (e.key === "Escape") onCancel();
         }}
@@ -180,7 +222,7 @@ function LineEditor({ initial, onSave, onCancel, label }: { initial: string; onS
         <button onClick={onCancel} className="inline-flex h-8 items-center rounded-lg px-3 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground">
           Cancel
         </button>
-        <span className="ml-auto hidden whitespace-nowrap text-xs text-faint xl:inline">⌘ + Enter to save</span>
+        <span className="ml-auto"><FormatButtons area={area} onChange={setText} /></span>
       </div>
     </div>
   );
@@ -239,12 +281,18 @@ function BulletRow({ n, bullet, summary, parent, siblings, first, last, movable,
   const [draft, setDraft] = useState(shown.text);
   const [busy, setBusy] = useState(false);
   const [rewriting, setRewriting] = useState(false);
+  const area = useRef<HTMLTextAreaElement | null>(null);
+  const grow = (el: HTMLTextAreaElement | null) => { if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight + 2}px`; } };
+  const setText = (v: string) => { setDraft(v); requestAnimationFrame(() => grow(area.current)); };
   const toCheck = needsCheck(bullet, shown.source, summary) && !checked.has(bullet.id) && !isHidden;
+  // Fork: once a version is picked, show just that text; "Compare" brings the choice back.
+  const picked = edits.use[bullet.id]?.kind === "tailored" || edits.use[bullet.id]?.kind === "base";
+  const comparing = !picked && bullet.base !== null && bullet.change !== "same";
 
   const saveDraft = async () => {
     if (busy) return;
     const text = draft.trim();
-    if (!text || text === shown.text.replace(/\*\*/g, "")) return setEditing(false);
+    if (!text || text === shown.text) return setEditing(false);
     setBusy(true);
     const keywords = await fetch(`/api/cv-studio/${encodeURIComponent(n)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "keywords", text }) })
       .then((r) => (r.ok ? (r.json() as Promise<{ keywords: string[] }>) : { keywords: [] }))
@@ -268,13 +316,10 @@ function BulletRow({ n, bullet, summary, parent, siblings, first, last, movable,
           <textarea
             autoFocus
             value={draft}
-            ref={(el) => { if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight + 2}px`; } }}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              e.target.style.height = "auto";
-              e.target.style.height = `${e.target.scrollHeight + 2}px`;
-            }}
+            ref={(el) => { area.current = el; grow(el); }}
+            onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
+              if (formatShortcut(e, setText)) return;
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveDraft();
               if (e.key === "Escape") setEditing(false);
             }}
@@ -288,15 +333,15 @@ function BulletRow({ n, bullet, summary, parent, siblings, first, last, movable,
             <button onClick={() => setEditing(false)} className="inline-flex h-8 items-center rounded-lg px-3 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground">
               Cancel
             </button>
-            <span className="ml-auto hidden whitespace-nowrap text-xs text-faint xl:inline">⌘ + Enter to save</span>
+            <span className="ml-auto"><FormatButtons area={area} onChange={setText} /></span>
           </div>
         </div>
       ) : (
         <p className={cn("leading-relaxed", isHidden ? "text-faint line-through" : "text-foreground")}>
-          {shown.source === "tailored" && bullet.change === "edited" && bullet.base !== null && bullet.similarity >= REWRITE_FLOOR ? <Diff before={bullet.base} after={bullet.tailored} /> : <Bold text={shown.text} />}
+          {comparing && shown.source === "tailored" && bullet.change === "edited" && bullet.base !== null && bullet.similarity >= REWRITE_FLOOR ? <Diff before={bullet.base} after={bullet.tailored} /> : <Bold text={shown.text} />}
         </p>
       )}
-      {!editing && shown.source === "tailored" && bullet.change === "edited" && bullet.base !== null && bullet.similarity < REWRITE_FLOOR && (
+      {!editing && comparing && shown.source === "tailored" && bullet.change === "edited" && bullet.base !== null && bullet.similarity < REWRITE_FLOOR && (
         <p className="mt-1 text-xs text-faint">
           <span className="font-medium">Your original:</span> {bullet.base}
         </p>
@@ -305,7 +350,7 @@ function BulletRow({ n, bullet, summary, parent, siblings, first, last, movable,
         {toCheck && (
           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">Not from your CV</span>
         )}
-        {bullet.base !== null && bullet.change !== "same" && (
+        {comparing && (
           <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-800">Reworded</span>
         )}
         {toCheck && (
@@ -317,7 +362,7 @@ function BulletRow({ n, bullet, summary, parent, siblings, first, last, movable,
             <Check className="size-3" /> Looks good
           </button>
         )}
-        {shown.source === "tailored" &&
+        {comparing && shown.source === "tailored" &&
           bullet.drivenBy.map((k) => (
             <span key={k} className="rounded-full bg-brand-soft px-2 py-0.5 text-[11px] text-brand-text" title="Job keyword this rewrite added">
               +{k}
@@ -325,7 +370,16 @@ function BulletRow({ n, bullet, summary, parent, siblings, first, last, movable,
           ))}
         {shown.source === "custom" && <span className="rounded-full bg-surface-hover px-2 py-0.5 text-[11px] text-muted">Your wording</span>}
         <span className="flex-1" />
-        {bullet.base !== null && bullet.change !== "same" && (
+        {picked && bullet.base !== null && bullet.change !== "same" && (
+          <button
+            type="button"
+            onClick={() => dispatch({ type: "unuse", id: bullet.id })}
+            className="rounded-full px-2 py-0.5 text-[11px] text-faint opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100 max-sm:opacity-100"
+          >
+            Compare versions
+          </button>
+        )}
+        {comparing && (
           <div role="radiogroup" aria-label="Wording" className="inline-flex rounded-full border border-border p-0.5 text-[11px]">
             {(["tailored", "base"] as const).map((kind) => (
               <button
@@ -351,7 +405,7 @@ function BulletRow({ n, bullet, summary, parent, siblings, first, last, movable,
               className={iconButton}
               aria-label="Edit wording"
               onClick={() => {
-                setDraft(shown.text.replace(/\*\*/g, ""));
+                setDraft(shown.text);
                 setEditing(true);
               }}
             >
