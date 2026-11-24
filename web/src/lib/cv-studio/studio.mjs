@@ -26,7 +26,8 @@
  * @typedef {{kind: "tailored"}|{kind: "base"}|{kind: "custom", text: string, keywords: string[]}} BulletUse
  * @typedef {{length: "full"|"one-page", tone: "tailored"|"conservative"}} Preset
  * @typedef {{v: 1, sourceHash: string, preset: Preset, use: Record<string, BulletUse>,
- *            hidden: string[], shown: string[], order: Record<string, string[]>, restored: Record<string, number[]>}} StudioEdits
+ *            hidden: string[], shown: string[], order: Record<string, string[]>, restored: Record<string, number[]>,
+ *            extra?: Record<string, Record<string, string>>}} StudioEdits
  */
 
 export const DEFAULT_PRESET = Object.freeze({ length: "full", tone: "tailored" });
@@ -134,9 +135,20 @@ export function restoredId(itemId, index) {
   return `${itemId}r${index}`;
 }
 
+/**
+ * Fork: the id of a line the user wrote in the Studio (`edits.extra`). The `x`
+ * keeps it apart from tailored (`b`) and added-back (`r`) bullets.
+ *
+ * @param {string} itemId
+ * @param {string|number} key
+ */
+export function extraId(itemId, key) {
+  return `${itemId}x${key}`;
+}
+
 /** @param {string} sourceHash @returns {StudioEdits} */
 export function emptyEdits(sourceHash) {
-  return { v: 1, sourceHash, preset: { ...DEFAULT_PRESET }, use: {}, hidden: [], shown: [], order: {}, restored: {} };
+  return { v: 1, sourceHash, preset: { ...DEFAULT_PRESET }, use: {}, hidden: [], shown: [], order: {}, restored: {}, extra: {} };
 }
 
 /** True when Reset would change nothing. A fresh object here would still count as a new undo step. */
@@ -147,7 +159,8 @@ function isUntouched(edits) {
     && edits.shown.length === 0
     && Object.keys(edits.use).length === 0
     && Object.keys(edits.order).length === 0
-    && Object.keys(edits.restored).length === 0;
+    && Object.keys(edits.restored).length === 0
+    && Object.keys(edits.extra ?? {}).length === 0;
 }
 
 /**
@@ -183,6 +196,9 @@ export function parseEdits(raw, sourceHash) {
       shown: strings(r.shown),
       order: Object.fromEntries(Object.entries(record(r.order)).map(([k, v]) => [k, strings(v)])),
       restored: Object.fromEntries(Object.entries(record(r.restored)).map(([k, v]) => [k, Array.isArray(v) ? v.filter(Number.isInteger) : []])),
+      extra: Object.fromEntries(
+        Object.entries(record(r.extra)).map(([k, v]) => [k, Object.fromEntries(Object.entries(record(v)).filter(([, t]) => typeof t === "string" && t.trim()))]),
+      ),
     },
     stale: false,
   };
@@ -194,6 +210,9 @@ export function parseEdits(raw, sourceHash) {
  *   | {type: "move", parent: string, id: string, by: -1|1, siblings: string[]}
  *   | {type: "restore", item: string, index: number}
  *   | {type: "unrestore", item: string, index: number}
+ *   | {type: "add-line", item: string, text: string}
+ *   | {type: "edit-line", item: string, key: string, text: string}
+ *   | {type: "remove-line", item: string, key: string}
  *   | {type: "preset", preset: Partial<Preset>}
  *   | {type: "reset"}
  *   | {type: "replace", edits: StudioEdits}} StudioAction
@@ -252,6 +271,30 @@ export function studioReducer(edits, action, doc) {
         restored: { ...edits.restored, [action.item]: (edits.restored[action.item] ?? []).filter((i) => i !== action.index) },
         order: order?.includes(id) ? { ...edits.order, [action.item]: order.filter((x) => x !== id) } : edits.order,
       };
+    }
+    case "add-line": {
+      const text = action.text.trim();
+      if (!text) return edits;
+      const lines = edits.extra?.[action.item] ?? {};
+      const key = String(Math.max(-1, ...Object.keys(lines).map(Number).filter(Number.isFinite)) + 1);
+      return { ...edits, extra: { ...edits.extra, [action.item]: { ...lines, [key]: text } } };
+    }
+    case "edit-line": {
+      const lines = edits.extra?.[action.item] ?? {};
+      const text = action.text.trim();
+      if (!(action.key in lines) || !text || lines[action.key] === text) return edits;
+      return { ...edits, extra: { ...edits.extra, [action.item]: { ...lines, [action.key]: text } } };
+    }
+    case "remove-line": {
+      const lines = { ...(edits.extra?.[action.item] ?? {}) };
+      if (!(action.key in lines)) return edits;
+      delete lines[action.key];
+      const id = extraId(action.item, action.key);
+      const order = edits.order[action.item];
+      const extra = { ...edits.extra };
+      if (Object.keys(lines).length) extra[action.item] = lines;
+      else delete extra[action.item];
+      return { ...edits, extra, order: order?.includes(id) ? { ...edits.order, [action.item]: order.filter((x) => x !== id) } : edits.order };
     }
     case "preset": {
       const preset = { ...edits.preset, ...action.preset };
@@ -336,8 +379,9 @@ export function resolveStudio(doc, edits) {
           if (!hidden.has(b.id)) shown.keywords.forEach((k) => found.add(k));
         }
         const restored = (edits.restored[item.id] ?? []).filter((i) => item.restorable[i]);
-        if (restored.length) {
-          added[item.id] = restored.map((i) => ({ id: restoredId(item.id, i), text: item.restorable[i].text }));
+        const mine = Object.entries(edits.extra?.[item.id] ?? {}).map(([key, t]) => ({ id: extraId(item.id, key), text: t }));
+        if (restored.length || mine.length) {
+          added[item.id] = [...restored.map((i) => ({ id: restoredId(item.id, i), text: item.restorable[i].text })), ...mine];
           restored.forEach((i) => item.restorable[i].keywords.forEach((k) => found.add(k)));
         }
       }

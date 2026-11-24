@@ -1,16 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDown, ArrowUp, Check, Eye, EyeOff, Loader2, Pencil, Plus, Sparkles, Undo2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Eye, EyeOff, Loader2, Pencil, Plus, Sparkles, Trash2, Undo2 } from "lucide-react";
 import { readSavedCliId } from "@/lib/saved-cli";
 import { cn } from "@/lib/cn";
 import { Tip } from "@/components/ui/tip";
 import { arrange } from "@/lib/cv-studio/html-blocks.mjs";
-import { bulletShown, restoredId, wordDiff, type StudioAction, type StudioBullet, type StudioEdits, type StudioItem, type StudioSection } from "@/lib/cv-studio/studio.mjs";
+import { bulletShown, extraId, restoredId, wordDiff, type StudioAction, type StudioBullet, type StudioEdits, type StudioItem, type StudioSection } from "@/lib/cv-studio/studio.mjs";
 
 type Dispatch = (a: StudioAction) => void;
 /** A bullet the tailor dropped and the user added back; `index` points into the item's `restorable`. */
 type AddedRow = { id: string; index: number; text: string };
+/** Fork: a line the user wrote in the Studio; `key` points into `edits.extra[item]`. */
+type MineRow = { id: string; key: string; text: string; mine: true };
 
 // Below this overlap a word diff is mostly red and green; the original reads better as its own line.
 const REWRITE_FLOOR = 0.45;
@@ -95,7 +97,10 @@ function ItemBlock({ item, section, siblings, first, last, ...common }: Common &
   const restored = edits.restored[item.id] ?? [];
   // Added-back bullets join the tailored ones in one ordered list, so they move like any other.
   const added: AddedRow[] = restored.filter((idx) => item.restorable[idx]).map((idx) => ({ id: restoredId(item.id, idx), index: idx, text: item.restorable[idx].text }));
-  const rows = arrange([...item.bullets, ...added] as (StudioBullet | AddedRow)[], edits.order[item.id]);
+  const mine: MineRow[] = Object.entries(edits.extra?.[item.id] ?? {}).map(([key, text]) => ({ id: extraId(item.id, key), key, text, mine: true }));
+  const rows = arrange([...item.bullets, ...added, ...mine] as (StudioBullet | AddedRow | MineRow)[], edits.order[item.id]);
+  // New lines join an entry's bullet list, so only entries that have one can take them.
+  const canAdd = item.kind === "entry" && item.bullets.length > 0;
   const rowIds = rows.map((r) => r.id);
   const movable = item.kind === "entry";
   const showHeader = item.kind === "entry";
@@ -111,7 +116,9 @@ function ItemBlock({ item, section, siblings, first, last, ...common }: Common &
       {!isHidden && (
         <ul className="mt-1 space-y-1.5">
           {rows.map((b, k) =>
-            "index" in b ? (
+            "mine" in b ? (
+              <MineLine key={b.id} row={b} item={item.id} siblings={rowIds} first={k === 0} last={k === rows.length - 1} movable={movable} dispatch={dispatch} />
+            ) : "index" in b ? (
               <li key={b.id} data-bullet={b.id} className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-sm">
                 <span className="flex-1 text-foreground">{b.text}</span>
                 {movable && <MoveButtons parent={item.id} id={b.id} siblings={rowIds} first={k === 0} last={k === rows.length - 1} dispatch={dispatch} label="added-back bullet" />}
@@ -136,9 +143,92 @@ function ItemBlock({ item, section, siblings, first, last, ...common }: Common &
               </li>
             ),
           )}
+          {canAdd && <AddLine onAdd={(text) => dispatch({ type: "add-line", item: item.id, text })} />}
         </ul>
       )}
     </div>
+  );
+}
+
+function LineEditor({ initial, onSave, onCancel, label }: { initial: string; onSave: (text: string) => void; onCancel: () => void; label: string }) {
+  const [draft, setDraft] = useState(initial);
+  const save = () => (draft.trim() ? onSave(draft.trim()) : onCancel());
+  return (
+    <div>
+      <textarea
+        autoFocus
+        value={draft}
+        rows={2}
+        placeholder="Write the new line…"
+        ref={(el) => { if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight + 2}px`; } }}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          e.target.style.height = "auto";
+          e.target.style.height = `${e.target.scrollHeight + 2}px`;
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) save();
+          if (e.key === "Escape") onCancel();
+        }}
+        aria-label={label}
+        className="block w-full resize-none overflow-hidden rounded-xl border border-brand/40 bg-background px-3 py-2.5 text-sm leading-relaxed text-foreground shadow-[0_0_0_3px_rgb(143_200_234/0.2)] placeholder:text-faint focus:outline-none"
+      />
+      <div className="mt-2.5 flex items-center gap-2">
+        <button onClick={save} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand px-3 text-sm font-medium text-brand-foreground transition-colors hover:bg-brand-200">
+          <Check className="size-3.5" /> Save
+        </button>
+        <button onClick={onCancel} className="inline-flex h-8 items-center rounded-lg px-3 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground">
+          Cancel
+        </button>
+        <span className="ml-auto hidden whitespace-nowrap text-xs text-faint xl:inline">⌘ + Enter to save</span>
+      </div>
+    </div>
+  );
+}
+
+// Fork: a line the user wrote. Shown with "Your line", editable and removable like the rest.
+function MineLine({ row, item, siblings, first, last, movable, dispatch }: { row: MineRow; item: string; siblings: string[]; first: boolean; last: boolean; movable: boolean; dispatch: Dispatch }) {
+  const [editing, setEditing] = useState(false);
+  return (
+    <li data-bullet={row.id} className="group rounded-lg border border-transparent px-3 py-2 text-sm transition-colors hover:border-border">
+      {editing ? (
+        <LineEditor initial={row.text} label="Edit your line" onCancel={() => setEditing(false)} onSave={(text) => { dispatch({ type: "edit-line", item, key: row.key, text }); setEditing(false); }} />
+      ) : (
+        <>
+          <p className="leading-relaxed text-foreground"><Bold text={row.text} /></p>
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className="rounded-full bg-surface-hover px-2 py-0.5 text-[11px] text-muted">Your line</span>
+            <span className="flex-1" />
+            <span className="inline-flex items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 max-sm:opacity-100">
+              <Tip label="Edit the text">
+                <button className={iconButton} aria-label="Edit your line" onClick={() => setEditing(true)}><Pencil className="size-3.5" /></button>
+              </Tip>
+              {movable && <MoveButtons parent={item} id={row.id} siblings={siblings} first={first} last={last} dispatch={dispatch} label="your line" />}
+              <Tip label="Delete this line" align="end">
+                <button className={iconButton} aria-label="Delete your line" onClick={() => dispatch({ type: "remove-line", item, key: row.key })}><Trash2 className="size-3.5" /></button>
+              </Tip>
+            </span>
+          </div>
+        </>
+      )}
+    </li>
+  );
+}
+
+function AddLine({ onAdd }: { onAdd: (text: string) => void }) {
+  const [open, setOpen] = useState(false);
+  if (open)
+    return (
+      <li className="px-3 py-2">
+        <LineEditor initial="" label="New line" onCancel={() => setOpen(false)} onSave={(text) => { onAdd(text); setOpen(false); }} />
+      </li>
+    );
+  return (
+    <li>
+      <button onClick={() => setOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground">
+        <Plus className="size-3.5" /> Add a line
+      </button>
+    </li>
   );
 }
 
