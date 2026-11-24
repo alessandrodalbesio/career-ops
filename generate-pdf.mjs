@@ -353,12 +353,12 @@ function normalizeTextForATS(html) {
     t = t.replace(/\s*\u2192\s*/g, () => { bump('right-arrow', 1); return ' to '; });
     t = t.replace(/\s*\u2190\s*/g, () => { bump('left-arrow', 1); return ' from '; });
     t = t.replace(/\s*[\u2191\u2193]\s*/g, () => { bump('vert-arrow', 1); return ' '; });
-    // Middle dot and bullet glyphs garble in some extractors \u2014 replace with pipe.
+    // Fork (Miao): the middle dot is KEPT in the PDF (Greta prefers it to a pipe;
+    // modern ATS parsers read it). Only its spacing is evened out.
     // Catalan l·l is a letter pair inside a word (intel·ligència), not a separator.
     t = t.replace(/\s*\u00B7\s*/g, (m, at, all) => {
       if (m === '\u00B7' && /[lL]/.test(all[at - 1] ?? '') && /[lL]/.test(all[at + 1] ?? '')) return m;
-      bump('middot', 1);
-      return ' | ';
+      return ' \u00B7 ';
     });
     t = t.replace(/\s*\u2022\s*/g, () => { bump('bullet', 1); return ' | '; });
     // Currency symbols sometimes stripped by font-subsetted PDFs \u2014 spell out

@@ -13,9 +13,9 @@ const body = (html) => normalizeTextForATS(`<p>${html}</p>`).html;
 const cases = [
   ['Expert en intel·ligència artificial i col·laboració', 'Expert en intel·ligència artificial i col·laboració'],
   ['INTEL·LIGÈNCIA ARTIFICIAL', 'INTEL·LIGÈNCIA ARTIFICIAL'],
-  ['Python · Go · SQL', 'Python | Go | SQL'],
-  ['Barcelona·Madrid', 'Barcelona | Madrid'],
-  ['Col·legi · Barcelona', 'Col·legi | Barcelona'],
+  ['Python · Go · SQL', 'Python · Go · SQL'],
+  ['Barcelona·Madrid', 'Barcelona · Madrid'],
+  ['Col·legi · Barcelona', 'Col·legi · Barcelona'],
 ];
 for (const [input, want] of cases) {
   const got = body(input);
@@ -24,5 +24,6 @@ for (const [input, want] of cases) {
 }
 
 const { replacements } = normalizeTextForATS('<p>intel·ligència · dades</p>');
-if (replacements.middot === 1) pass('counts only the separator as a middot replacement');
+// Fork: the separator is kept, so nothing is counted as replaced.
+if (!replacements.middot) pass('a kept middle dot is not counted as a replacement');
 else fail(`middot count wrong: ${JSON.stringify(replacements)}`);
