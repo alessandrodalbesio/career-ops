@@ -17,6 +17,7 @@ import { resolvePdfPaths, type PdfPaths } from "@/lib/pdf-paths.mjs";
 import { renderAndMarkPdf, writeCvHtml, pdfRunOutcome } from "@/lib/pdf-render.mjs";
 import { materializeTailoredCv, withSharedPdfPath } from "@/lib/cv-from-json.mjs";
 import { saveBuiltCv } from "@/lib/pdf-run-save.mjs";
+import { isFactGateError, repairCvPayload } from "@/lib/cv-fact-repair";
 import { createCvEnvelopeFilter } from "@/lib/cv-envelope.mjs";
 import { createReportEnvelopeFilter } from "@/lib/report-envelope.mjs";
 import { persistEvaluation, evaluateRunOutcome, evaluationOutcomeEvent } from "@/lib/report-persist.mjs";
@@ -568,18 +569,17 @@ export async function POST(req: Request) {
             reportNum: paths.reportNum,
             ats,
           });
-          if (result.kind === "render-failed") {
-            send({ type: "error", msg: result.error.slice(0, 1500) });
-            return;
-          }
+          // Fork: a failed render is returned, not sent, so the caller can retry
+          // a fact-gate failure once. The caller's finally closes the run.
+          if (result.kind === "render-failed") return result.error;
           // Non-fatal issues (a defaulted page format, a tracker row not marked) still
           // surface here rather than only in a server log nobody sees.
           sendWarnings(result.warnings);
           send({ type: "done", tokens: lastTokens, costUsd: lastCostUsd });
+          return null;
         } catch (e) {
           send({ type: "error", msg: `PDF rendering crashed unexpectedly: ${e instanceof Error ? e.message : String(e)}`.slice(0, 200) });
-        } finally {
-          close();
+          return null;
         }
       };
 
@@ -663,10 +663,16 @@ export async function POST(req: Request) {
                   country: envelope.country,
                 });
                 sendWarnings(sheet.warnings);
+                // Fork: one automatic retry when the fact gate blocks the CV
+                // (cv-fact-repair.ts). Any other failure is reported as before.
+                let current = { ...envelope, format: sheet.format };
+                for (let attempt = 0; ; attempt++) {
+                let failure = null as string | null;
                 await saveBuiltCv({
                   build: async () => {
+                    if (scratchDir) { const previous = scratchDir; scratchDir = ""; try { fs.rmSync(previous, { recursive: true, force: true }); } catch { /* ignore */ } }
                     const built = await materializeTailoredCv({
-                      envelope: { ...envelope, format: sheet.format },
+                      envelope: current,
                       coreRoot: resolveCodeRoot(process.cwd(), process.env),
                       dataRoot: careerOpsRoot(),
                       cvTemplate,
@@ -680,11 +686,24 @@ export async function POST(req: Request) {
                     return built;
                   },
                   isClosed: () => closed,
-                  onError: (error) => send({ type: "error", msg: error.slice(0, 200) }),
+                  onError: (error) => { failure = error; },
                   onWarnings: sendWarnings,
                   save: (built) => saveCv(pdfPaths, { html: built.html }),
-                  render: (built) => renderPdf(pdfPaths, sheet.format, built.ats),
+                  render: async (built) => { failure = await renderPdf(pdfPaths, sheet.format, built.ats); },
                 });
+                if (!failure || closed) break;
+                if (attempt === 0 && current.kind === "json" && current.payload && isFactGateError(failure)) {
+                  send({ type: "text", text: `⚠️ The fact check blocked the first version: ${failure.slice(0, 1200)}\n` });
+                  send({ type: "status", label: "Fixing the CV and trying once more…" });
+                  const fix = await repairCvPayload(cliId, current.payload as Record<string, unknown>, failure);
+                  if (closed) break;
+                  if (fix.ok) { current = { ...current, payload: fix.payload }; continue; }
+                  send({ type: "error", msg: `${failure.slice(0, 1300)} (The automatic fix did not work: ${fix.detail})`.slice(0, 1500) });
+                  break;
+                }
+                send({ type: "error", msg: (attempt > 0 ? `Still blocked after one automatic fix. ${failure}` : failure).slice(0, 1500) });
+                break;
+                }
               } catch (e) {
                 send({ type: "error", msg: `PDF rendering crashed unexpectedly: ${e instanceof Error ? e.message : String(e)}`.slice(0, 200) });
               } finally {
