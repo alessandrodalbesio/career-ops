@@ -65,20 +65,20 @@ export function AppShell({ children, followupsEnabled }: { children: React.React
               );
             })}
           </nav>
-
-          <WorkerPills />
-
-          {/* Fork: secondary link to the run history (/jobs), kept small at the bottom. */}
+          {/* Fork: secondary link to the run history (/jobs), kept small under the main menu. */}
           <Link
             href="/jobs"
             className={cn(
-              "mt-auto flex items-center gap-2 rounded-md px-3 pt-4 text-xs transition-colors",
+              "mt-2 flex items-center gap-3 rounded-md px-3 py-1.5 text-xs transition-colors",
               pathname.startsWith("/jobs") ? "text-brand-text" : "text-faint hover:text-foreground",
             )}
           >
             <History className="size-3.5" />
             Run history
           </Link>
+
+          <WorkerPills />
+
         </aside>
         <main id="main-content" tabIndex={-1} className="flex-1 overflow-x-hidden focus:outline-none">{children}</main>
         <div className="print:hidden">

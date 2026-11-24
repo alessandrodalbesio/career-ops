@@ -185,23 +185,23 @@ export function MobileNav({ followupsEnabled }: { followupsEnabled: boolean }) {
             );
           })}
         </nav>
-
-        <div className="px-3">
-          <WorkerPills />
-        </div>
-
         {/* Fork: secondary link to the run history (/jobs). */}
         <Link
           href="/jobs"
           onClick={() => setOpen(false)}
           className={cn(
-            "mx-3 mt-auto mb-4 flex min-h-[44px] items-center gap-2 rounded-lg px-3 text-sm transition-colors",
+            "mx-3 mt-1 flex min-h-[44px] items-center gap-3 rounded-lg px-3 text-sm transition-colors",
             pathname.startsWith("/jobs") ? "text-brand-text" : "text-faint hover:text-foreground",
           )}
         >
           <History className="size-4" />
           Run history
         </Link>
+
+        <div className="px-3">
+          <WorkerPills />
+        </div>
+
       </aside>
     </>
   );
