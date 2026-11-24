@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { Modal } from "@/components/ui/modal";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { FilePenLine, FilePlus2, FileText, Hourglass, Loader2, Sparkles, SquarePen, TriangleAlert } from "lucide-react";
+import { FilePlus2, FileText, Hourglass, Loader2, Mail, Sparkles, SquarePen, TriangleAlert } from "lucide-react";
 import { useJobs } from "@/components/jobs/job-store";
 import { PdfViewer } from "@/components/pipeline/pdf-viewer";
 import { DocCard, ghostBtn, iconPrimary, iconSecondary, primaryBtn } from "@/components/ui/doc-card";
@@ -86,7 +86,7 @@ export function CoverDraftButton({ n, company, pdfHref }: { n: string; company: 
   const ready = hasLetter || (state.kind === "ready" && job);
   return (
     <DocCard
-      icon={<FilePenLine className="size-5" />}
+      icon={<Mail className="size-5" />}
       title="Cover letter"
       status={ready ? "Draft ready" : "Not written yet"}
       tone={ready ? "ready" : "idle"}
