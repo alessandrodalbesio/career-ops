@@ -414,12 +414,31 @@ function BriefCard() {
   const [note, setNote] = useState<{ error?: boolean; msg: string } | null>(null);
   const [rowStatus, setRowStatus] = useState<Record<number, Status>>({});
 
+  // The rebuild runs on the server and leaves a draft file, so leaving the page
+  // loses nothing: on load (and every few seconds while it runs) pick it up.
+  const load = async () => {
+    try {
+      const r = await fetch("/api/profile/brief", { cache: "no-store" });
+      const d = (await r.json()) as { text: string; draft: string | null; rebuilding: boolean; error: string | null };
+      setSaved(d.text);
+      setDraft((cur) => (d.draft === null ? null : cur ?? d.draft));
+      setBusy((b) => (d.rebuilding ? "rebuild" : b === "rebuild" ? null : b));
+      if (d.rebuilding) setNote({ msg: "Miao is rewriting this from your profile. It takes about half a minute; you can leave this page." });
+      else if (d.error) setNote({ error: true, msg: d.error });
+      else setNote((n) => (n && !n.error && n.msg.startsWith("Miao is rewriting") ? null : n));
+      return d.rebuilding;
+    } catch {
+      setNote({ error: true, msg: "The brief could not be read." });
+      return false;
+    }
+  };
+  const [polling, setPolling] = useState(false);
+  useEffect(() => { load().then(setPolling); }, []);
   useEffect(() => {
-    fetch("/api/profile/brief", { cache: "no-store" })
-      .then((r) => r.json() as Promise<{ text: string }>)
-      .then((d) => setSaved(d.text))
-      .catch(() => setNote({ error: true, msg: "The brief could not be read." }));
-  }, []);
+    if (!polling) return;
+    const t = setInterval(() => { load().then((still) => { if (!still) setPolling(false); }); }, 3000);
+    return () => clearInterval(t);
+  }, [polling]);
 
   const put = async (text: string) => {
     const r = await fetch("/api/profile/brief", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
@@ -446,18 +465,21 @@ function BriefCard() {
 
   const rebuild = async () => {
     setBusy("rebuild");
-    setNote({ msg: "Miao is rewriting this from your profile. It takes about half a minute…" });
+    setNote({ msg: "Miao is rewriting this from your profile. It takes about half a minute; you can leave this page." });
     try {
       const r = await fetch("/api/profile/brief", { method: "POST" });
-      const d = (await r.json().catch(() => ({}))) as { text?: string; error?: string };
-      if (!r.ok || !d.text) throw new Error(d.error ?? "Could not rebuild.");
-      setDraft(d.text);
-      setNote(null);
+      if (!r.ok) throw new Error("Could not start the rebuild.");
+      setDraft(null);
+      setPolling(true);
     } catch (e) {
-      setNote({ error: true, msg: e instanceof Error ? e.message : "Could not rebuild." });
-    } finally {
       setBusy(null);
+      setNote({ error: true, msg: e instanceof Error ? e.message : "Could not rebuild." });
     }
+  };
+  const discardDraft = async () => {
+    setDraft(null);
+    setNote(null);
+    await fetch("/api/profile/brief", { method: "DELETE" }).catch(() => {});
   };
   const saveDraft = async () => {
     if (draft === null) return;
@@ -501,7 +523,7 @@ function BriefCard() {
       {draft !== null && (
         <div className="flex flex-wrap items-center gap-2 border-b border-border bg-brand-soft px-6 py-3 text-sm">
           <span className="mr-auto text-foreground">New version from your profile. Check it (you can still edit it), then save.</span>
-          <button type="button" onClick={() => { setDraft(null); setNote(null); }} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-sm text-muted hover:text-foreground">
+          <button type="button" onClick={discardDraft} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-sm text-muted hover:text-foreground">
             Discard
           </button>
           <button

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { History } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { CatLogo } from "@/components/pixel-cat";
@@ -66,6 +67,18 @@ export function AppShell({ children, followupsEnabled }: { children: React.React
           </nav>
 
           <WorkerPills />
+
+          {/* Fork: secondary link to the run history (/jobs), kept small at the bottom. */}
+          <Link
+            href="/jobs"
+            className={cn(
+              "mt-auto flex items-center gap-2 rounded-md px-3 pt-4 text-xs transition-colors",
+              pathname.startsWith("/jobs") ? "text-brand-text" : "text-faint hover:text-foreground",
+            )}
+          >
+            <History className="size-3.5" />
+            Run history
+          </Link>
         </aside>
         <main id="main-content" tabIndex={-1} className="flex-1 overflow-x-hidden focus:outline-none">{children}</main>
         <div className="print:hidden">
