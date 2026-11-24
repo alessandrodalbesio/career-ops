@@ -11,6 +11,8 @@ import { JOB_PAGE_FRAME } from "@/components/page-frame";
 import { PROFILE_CARDS, ROLE_TITLES_FIELD, isEmptyValue, joinNote, splitNote, type ProfileField, type ProfileTab } from "@/lib/profile-fields";
 import type { Role, RolesDoc } from "@/lib/profile-roles";
 import { cn } from "@/lib/cn";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type Values = Record<string, unknown>;
 type Status = { kind: "saving" } | { kind: "saved" } | { kind: "error"; message: string };
@@ -351,43 +353,119 @@ export function ProfileEditor() {
 }
 
 // ── How Miao filters jobs (modes/_brief.md: what triage and scans score against) ──
+// Shown like the rest of the page: one row per "## " section, read as formatted
+// text, click to edit the section's Markdown, saves on blur. "Rebuild from
+// profile" fills a draft that is only written on Save.
+type BriefDoc = { head: string; sections: { title: string; body: string }[] };
+function parseBrief(text: string): BriefDoc {
+  const parts = text.split(/^## /m);
+  return {
+    head: parts[0],
+    sections: parts.slice(1).map((p) => {
+      const nl = p.indexOf("\n");
+      return nl < 0 ? { title: p.trim(), body: "" } : { title: p.slice(0, nl).trim(), body: p.slice(nl + 1).trim() };
+    }),
+  };
+}
+const joinBrief = (d: BriefDoc) =>
+  (d.head.trimEnd() + "\n\n" + d.sections.map((x) => `## ${x.title}\n${x.body.trim()}\n`).join("\n")).trim() + "\n";
+
+const briefMd =
+  "text-sm leading-relaxed text-foreground [&_li]:ml-4 [&_li]:list-disc [&_ol_li]:list-decimal [&_p+p]:mt-2 [&_strong]:font-semibold [&_table]:w-full [&_table]:text-xs [&_td]:border-t [&_td]:border-border [&_td]:py-1 [&_td]:pr-3 [&_td]:align-top [&_th]:py-1 [&_th]:pr-3 [&_th]:text-left [&_th]:font-medium [&_th]:text-muted [&_ul]:space-y-0.5";
+
+function BriefSection({ body, onSave }: { body: string; onSave: (v: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(body);
+  useEffect(() => { if (!editing) setDraft(body); }, [body, editing]);
+  if (editing) {
+    return (
+      <textarea
+        autoFocus
+        value={draft}
+        ref={grow}
+        onChange={(e) => { setDraft(e.target.value); grow(e.target); }}
+        onBlur={() => { setEditing(false); if (draft.trim() !== body.trim()) onSave(draft); }}
+        onKeyDown={(e) => { if (e.key === "Escape") { setDraft(body); setEditing(false); } }}
+        className={cn(editable, "resize-none overflow-hidden leading-relaxed")}
+      />
+    );
+  }
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => setEditing(true)}
+      onKeyDown={(e) => { if (e.key === "Enter") setEditing(true); }}
+      className="cursor-text rounded-lg border border-transparent px-2.5 py-1.5 transition-colors hover:bg-surface-hover/70"
+    >
+      {body.trim() ? (
+        <div className={briefMd}><ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown></div>
+      ) : (
+        <span className="text-sm text-faint">Empty</span>
+      )}
+    </div>
+  );
+}
+
 function BriefCard() {
   const [saved, setSaved] = useState<string | null>(null);
-  const [text, setText] = useState("");
+  const [draft, setDraft] = useState<string | null>(null); // a rebuilt version waiting for Save
   const [busy, setBusy] = useState<"rebuild" | "save" | null>(null);
   const [note, setNote] = useState<{ error?: boolean; msg: string } | null>(null);
-  const box = useRef<HTMLTextAreaElement>(null);
+  const [rowStatus, setRowStatus] = useState<Record<number, Status>>({});
 
   useEffect(() => {
     fetch("/api/profile/brief", { cache: "no-store" })
       .then((r) => r.json() as Promise<{ text: string }>)
-      .then((d) => { setSaved(d.text); setText(d.text); })
+      .then((d) => setSaved(d.text))
       .catch(() => setNote({ error: true, msg: "The brief could not be read." }));
   }, []);
-  useEffect(() => grow(box.current), [text]);
+
+  const put = async (text: string) => {
+    const r = await fetch("/api/profile/brief", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    const d = (await r.json().catch(() => ({}))) as { error?: string };
+    if (!r.ok) throw new Error(d.error ?? "Not saved.");
+  };
+
+  const shown = draft ?? saved ?? "";
+  const doc = parseBrief(shown);
+
+  const editSection = async (i: number, body: string) => {
+    const next = joinBrief({ ...doc, sections: doc.sections.map((x, j) => (j === i ? { ...x, body } : x)) });
+    if (draft !== null) { setDraft(next); return; } // part of the rebuilt version; saved with it
+    setSaved(next);
+    setRowStatus((s) => ({ ...s, [i]: { kind: "saving" } }));
+    try {
+      await put(next);
+      setRowStatus((s) => ({ ...s, [i]: { kind: "saved" } }));
+      setTimeout(() => setRowStatus((s) => (s[i]?.kind === "saved" ? Object.fromEntries(Object.entries(s).filter(([k]) => k !== String(i))) : s)), 2000);
+    } catch (e) {
+      setRowStatus((s) => ({ ...s, [i]: { kind: "error", message: e instanceof Error ? e.message : "Not saved." } }));
+    }
+  };
 
   const rebuild = async () => {
     setBusy("rebuild");
-    setNote({ msg: "Miao is rewriting the brief from your profile. This takes about a minute…" });
+    setNote({ msg: "Miao is rewriting this from your profile. It takes about half a minute…" });
     try {
       const r = await fetch("/api/profile/brief", { method: "POST" });
       const d = (await r.json().catch(() => ({}))) as { text?: string; error?: string };
-      if (!r.ok || !d.text) throw new Error(d.error ?? "Could not rebuild the brief.");
-      setText(d.text);
-      setNote({ msg: "Here is the new version. Check it, then click Save." });
+      if (!r.ok || !d.text) throw new Error(d.error ?? "Could not rebuild.");
+      setDraft(d.text);
+      setNote(null);
     } catch (e) {
-      setNote({ error: true, msg: e instanceof Error ? e.message : "Could not rebuild the brief." });
+      setNote({ error: true, msg: e instanceof Error ? e.message : "Could not rebuild." });
     } finally {
       setBusy(null);
     }
   };
-  const saveBrief = async () => {
+  const saveDraft = async () => {
+    if (draft === null) return;
     setBusy("save");
     try {
-      const r = await fetch("/api/profile/brief", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
-      const d = (await r.json().catch(() => ({}))) as { error?: string };
-      if (!r.ok) throw new Error(d.error ?? "Not saved.");
-      setSaved(text);
+      await put(draft);
+      setSaved(draft);
+      setDraft(null);
       setNote({ msg: "Saved." });
     } catch (e) {
       setNote({ error: true, msg: e instanceof Error ? e.message : "Not saved." });
@@ -395,7 +473,6 @@ function BriefCard() {
       setBusy(null);
     }
   };
-  const dirty = saved !== null && text !== saved;
 
   return (
     <section className="rounded-2xl border border-border bg-surface">
@@ -403,49 +480,58 @@ function BriefCard() {
         <div>
           <h2 className="text-base font-semibold text-foreground">How Miao filters jobs</h2>
           <p className="text-sm text-muted">
-            The short version of your profile that the quick first check reads when it scores new jobs. After you change your roles, places or languages, click
-            “Rebuild from profile” so it stays in step.
+            The short version of your profile that the quick first check reads when it scores new jobs. Click any part to change it. After you change your
+            roles, places or languages, rebuild it so it stays in step.
           </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={rebuild}
+              disabled={busy !== null || saved === null}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-background disabled:opacity-50"
+            >
+              {busy === "rebuild" && <Loader2 className="size-3.5 animate-spin" />} Rebuild from profile
+            </button>
+            {note && <span className={cn("text-xs", note.error ? "text-red-700" : "text-faint")}>{note.msg}</span>}
+          </div>
         </div>
         <UsedFor items={["Scans", "Quick check"]} />
       </div>
-      <div className="space-y-3 px-6 py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={rebuild}
-            disabled={busy !== null || saved === null}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-background disabled:opacity-50"
-          >
-            {busy === "rebuild" && <Loader2 className="size-3.5 animate-spin" />} Rebuild from profile
+
+      {draft !== null && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-brand-soft px-6 py-3 text-sm">
+          <span className="mr-auto text-foreground">New version from your profile. Check it (you can still edit it), then save.</span>
+          <button type="button" onClick={() => { setDraft(null); setNote(null); }} disabled={busy !== null} className="rounded-lg px-3 py-1.5 text-sm text-muted hover:text-foreground">
+            Discard
           </button>
           <button
             type="button"
-            onClick={saveBrief}
-            disabled={busy !== null || !dirty}
+            onClick={saveDraft}
+            disabled={busy !== null}
             className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50"
           >
             {busy === "save" ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />} Save
           </button>
-          {dirty && (
-            <button type="button" onClick={() => { setText(saved ?? ""); setNote(null); }} disabled={busy !== null} className="text-sm text-muted hover:text-foreground">
-              Undo changes
-            </button>
-          )}
-          {note && <span className={cn("text-xs", note.error ? "text-red-700" : "text-faint")}>{note.msg}</span>}
         </div>
-        {saved === null && !note?.error ? (
-          <div className="flex justify-center py-8 text-muted"><Loader2 className="size-5 animate-spin" /></div>
-        ) : (
-          <textarea
-            ref={box}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            spellCheck={false}
-            className={cn(editable, "min-h-40 resize-none overflow-hidden font-mono text-xs leading-relaxed")}
-          />
-        )}
-      </div>
+      )}
+
+      {saved === null && !note?.error ? (
+        <div className="flex justify-center py-8 text-muted"><Loader2 className="size-5 animate-spin" /></div>
+      ) : (
+        <div className="divide-y divide-border">
+          {doc.sections.map((x, i) => (
+            <div key={`${x.title}-${i}`} className="grid grid-cols-1 gap-x-6 gap-y-1 px-6 py-3 sm:grid-cols-[200px_minmax(0,1fr)]">
+              <div className="pt-1.5">
+                <FieldLabel label={x.title} />
+                <StatusBadge status={rowStatus[i]} />
+              </div>
+              <div className="min-w-0">
+                <BriefSection body={x.body} onSave={(v) => editSection(i, v)} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
