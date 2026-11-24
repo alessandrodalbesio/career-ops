@@ -73,7 +73,7 @@ export function AppShell({ children, followupsEnabled }: { children: React.React
           <WorkerPills />
 
         </aside>
-        <main id="main-content" tabIndex={-1} className="flex-1 overflow-x-hidden focus:outline-none">{children}</main>
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-x-clip focus:outline-none">{children}</main>
         <div className="print:hidden">
           <AssistantConsole />
           <BackToTop />
