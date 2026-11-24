@@ -82,3 +82,11 @@ export function withSpendTierModel(cliId, options) {
   }
   return { ...options, env: { ...env, ANTHROPIC_MODEL: CLAUDE_TIER_MODELS[tier] } };
 }
+
+// Fork: CV writing (tailored CV, CV studio rewrite, CV import) always runs on
+// Opus, whatever spend_tier says: it follows the CV house rules and the fact
+// gate more reliably. An ANTHROPIC_MODEL set by hand still wins.
+export const CV_MODEL = CLAUDE_TIER_MODELS.premium;
+export function cvRunEnv(env = process.env) {
+  return env.ANTHROPIC_MODEL?.trim() ? env : { ...env, ANTHROPIC_MODEL: CV_MODEL };
+}

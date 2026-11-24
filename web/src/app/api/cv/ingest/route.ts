@@ -1,3 +1,4 @@
+import { cvRunEnv } from "@/lib/spend-tier-model.mjs";
 import { spawnHeadlessCli } from "@/lib/spawn-cli.mjs";
 import fs from "node:fs";
 import os from "node:os";
@@ -180,7 +181,7 @@ export async function POST(req: Request) {
     child = spawnHeadlessCli(
       binPath,
       spill.args,
-      { cwd: careerOpsRoot(), env: process.env },
+      { cwd: careerOpsRoot(), env: cvRunEnv() },
       { cliId, capabilities: CAPS.localReadOnly },
     );
   } catch (e) {

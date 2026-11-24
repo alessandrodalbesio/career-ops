@@ -2,6 +2,7 @@
 // through spawnHeadlessCli (which closes stdin so `codex exec` can't hang waiting
 // on it, #2085), while the PDF render is a plain Node child process with no CLI
 // sandbox in the way (#2172) and so passes `spawn` itself to renderAndMarkPdf.
+import { cvRunEnv } from "@/lib/spend-tier-model.mjs";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -289,7 +290,7 @@ export async function POST(req: Request) {
     child = spawnHeadlessCli(
       binPath,
       spill.args,
-      { cwd: careerOpsRoot(), env: process.env },
+      { cwd: careerOpsRoot(), env: kind === "pdf" ? cvRunEnv() : process.env },
       { cliId, capabilities },
     );
     if (instructionFile) child.once("close", instructionFile.cleanup);

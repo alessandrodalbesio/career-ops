@@ -1,3 +1,4 @@
+import { cvRunEnv } from "@/lib/spend-tier-model.mjs";
 import { spawnHeadlessCli } from "@/lib/spawn-cli.mjs";
 import { fencingReport } from "@/lib/cli-fencing.mjs";
 import { CAPS } from "@/lib/worker-capabilities.mjs";
@@ -27,7 +28,7 @@ export function runRewrite(cliId: string, prompt: string): Promise<RewriteRun> {
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawnHeadlessCli(binPath, args, { cwd: careerOpsRoot(), env: process.env }, { cliId: spec.id, capabilities: CAPS.localReadOnly });
+      child = spawnHeadlessCli(binPath, args, { cwd: careerOpsRoot(), env: cvRunEnv() }, { cliId: spec.id, capabilities: CAPS.localReadOnly });
     } catch (e) {
       return resolve({ ok: false, reason: "refused", detail: e instanceof Error ? e.message : undefined });
     }
