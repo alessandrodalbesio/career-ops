@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { History, Menu, X } from "lucide-react";
@@ -161,42 +161,33 @@ export function MobileNav({ followupsEnabled }: { followupsEnabled: boolean }) {
         </div>
 
         <nav className="flex flex-col gap-1 px-3">
-          {visibleNavItems(followupsEnabled).map(({ href, label, icon: Icon, chip }) => {
+          {visibleNavItems(followupsEnabled).map(({ href, label, icon: Icon, chip, group }, i, all) => {
+            const header = group === "settings" && all[i - 1]?.group !== "settings";
             const active = isActivePath(href, pathname);
             return (
-              <Link
-                key={href}
-                href={href}
-                onClick={() => setOpen(false)}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-3 text-[15px] transition-colors",
-                  active ? "bg-brand-soft text-brand-text" : "text-muted hover:bg-surface-hover hover:text-foreground",
-                )}
-              >
-                <Icon className="size-5" />
-                {label}
-                {chip && (
-                  <span className="ml-auto rounded-full border border-brand/30 bg-brand-soft px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-text">
-                    {chip}
-                  </span>
-                )}
-              </Link>
+              <Fragment key={href}>
+                {header && <p className="mt-4 mb-1 px-3 text-xs font-medium uppercase tracking-wide text-faint">Settings</p>}
+                <Link
+                  href={href}
+                  onClick={() => setOpen(false)}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-3 text-[15px] transition-colors",
+                    active ? "bg-brand-soft text-brand-text" : "text-muted hover:bg-surface-hover hover:text-foreground",
+                  )}
+                >
+                  <Icon className="size-5" />
+                  {label}
+                  {chip && (
+                    <span className="ml-auto rounded-full border border-brand/30 bg-brand-soft px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-text">
+                      {chip}
+                    </span>
+                  )}
+                </Link>
+              </Fragment>
             );
           })}
         </nav>
-        {/* Fork: secondary link to the run history (/jobs). */}
-        <Link
-          href="/jobs"
-          onClick={() => setOpen(false)}
-          className={cn(
-            "mx-3 mt-1 flex min-h-[44px] items-center gap-3 rounded-lg px-3 text-sm transition-colors",
-            pathname.startsWith("/jobs") ? "text-brand-text" : "text-faint hover:text-foreground",
-          )}
-        >
-          <History className="size-4" />
-          Run history
-        </Link>
 
         <div className="px-3">
           <WorkerPills />

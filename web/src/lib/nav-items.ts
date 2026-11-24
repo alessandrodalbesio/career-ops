@@ -1,4 +1,4 @@
-import { House, Compass, ListChecks, Send, Radar, BarChart3, FileText, Files, Settings, CalendarClock, FolderOpen, UserRound, ScrollText } from "lucide-react";
+import { House, Compass, ListChecks, Send, Radar, BarChart3, FileText, Files, Settings, CalendarClock, FolderOpen, UserRound, ScrollText, History } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 
 // Single source of truth for the app's primary destinations — shared by the
@@ -8,6 +8,8 @@ export type NavItem = {
   label: string;
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   chip?: string;
+  /** Fork: "settings" items are shown in their own group below the main ones. */
+  group?: "settings";
 };
 
 export const NAV_ITEMS: NavItem[] = [
@@ -19,8 +21,9 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/portals", label: "Portals", icon: Radar },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/cv", label: "CV", icon: FileText },
-  { href: "/profile", label: "Profile", icon: UserRound },
-  { href: "/rules", label: "Rules", icon: ScrollText },
+  { href: "/profile", label: "Profile", icon: UserRound, group: "settings" },
+  { href: "/rules", label: "Rules", icon: ScrollText, group: "settings" },
+  { href: "/jobs", label: "Run history", icon: History, group: "settings" },
   { href: "/documents", label: "Documents", icon: Files },
   { href: "/output", label: "Preparation", icon: FolderOpen },
   { href: "/config", label: "Config", icon: Settings },

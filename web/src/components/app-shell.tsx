@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import Link from "next/link";
 import { History } from "lucide-react";
 import { usePathname } from "next/navigation";
@@ -41,41 +42,33 @@ export function AppShell({ children, followupsEnabled }: { children: React.React
             </span>
           </Link>
           <nav className="flex flex-col gap-1">
-            {visibleNavItems(followupsEnabled).map(({ href, label, icon: Icon, chip }) => {
+            {visibleNavItems(followupsEnabled).map(({ href, label, icon: Icon, chip, group }, i, all) => {
+              const header = group === "settings" && all[i - 1]?.group !== "settings";
               const active = isActivePath(href, pathname);
               return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-                    active
-                      ? "bg-brand-soft text-brand-text"
-                      : "text-muted hover:bg-surface-hover hover:text-foreground",
-                  )}
-                >
-                  <Icon className="size-4" />
-                  {label}
-                  {chip && (
-                    <span className="ml-auto rounded-full border border-brand/30 bg-brand-soft px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-text">
-                      {chip}
-                    </span>
-                  )}
-                </Link>
+                <Fragment key={href}>
+                  {header && <p className="mt-4 mb-1 px-3 text-[11px] font-medium uppercase tracking-wide text-faint">Settings</p>}
+                  <Link
+                    href={href}
+                    className={cn(
+                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                      active
+                        ? "bg-brand-soft text-brand-text"
+                        : "text-muted hover:bg-surface-hover hover:text-foreground",
+                    )}
+                  >
+                    <Icon className="size-4" />
+                    {label}
+                    {chip && (
+                      <span className="ml-auto rounded-full border border-brand/30 bg-brand-soft px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-text">
+                        {chip}
+                      </span>
+                    )}
+                  </Link>
+                </Fragment>
               );
             })}
           </nav>
-          {/* Fork: secondary link to the run history (/jobs), kept small under the main menu. */}
-          <Link
-            href="/jobs"
-            className={cn(
-              "mt-2 flex items-center gap-3 rounded-md px-3 py-1.5 text-xs transition-colors",
-              pathname.startsWith("/jobs") ? "text-brand-text" : "text-faint hover:text-foreground",
-            )}
-          >
-            <History className="size-3.5" />
-            Run history
-          </Link>
 
           <WorkerPills />
 
