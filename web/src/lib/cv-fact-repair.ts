@@ -15,8 +15,8 @@ const LENGTH_TASK = [
   "",
   "Cut only what is needed: the number of spilled lines plus one line of margin, no more. A 2-line spill usually means removing ONE bullet (a bullet that wraps to 2 lines). If the message gives no line count, cut about 3 lines.",
   "How to cut, in this order, stopping as soon as the target is reached:",
-  "- Remove the bullet least relevant to the job (the job is described by the summary and the CV's focus); prefer a long one. Never take a job below 2 bullets or a project below 1.",
-  "- Then remove a second project, if there are two.",
+  "- If there are two projects, remove the less relevant one first. Always keep one project.",
+  "- Then remove the bullet least relevant to the job (the job is described by the summary and the CV's focus); prefer a long one. Never take a job below 2 bullets or a project below 1.",
   "- Only as a last resort shorten the summary.",
   "Never change the wording of the lines you keep. Never add anything. Never remove contact details, job titles, employers, schools or dates. Keep the same JSON keys and structure.",
 ];
