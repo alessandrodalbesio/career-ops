@@ -23,6 +23,18 @@ export const PROFILE_CARDS: ProfileCard[] = [
     ],
   },
   {
+    id: "addresses",
+    tab: "about",
+    title: "Addresses",
+    description: "The address on a CV, cover letter or form is picked by the job's country.",
+    usedFor: ["CV", "Cover letters", "Forms"],
+    fields: [
+      { path: "addresses.default.address", label: "Italy and anywhere else", kind: "text", placeholder: "Street, postcode city, country" },
+      { path: "addresses.switzerland.address", label: "Jobs in Switzerland", kind: "text", placeholder: "Street, postcode city, country" },
+      { path: "addresses.austria.address", label: "Jobs in Austria", kind: "text", placeholder: "Street, postcode city, country" },
+    ],
+  },
+  {
     id: "story",
     tab: "about",
     title: "Your story",
