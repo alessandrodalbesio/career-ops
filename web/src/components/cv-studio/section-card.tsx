@@ -147,9 +147,18 @@ function ItemBlock({ item, section, siblings, first, last, ...common }: Common &
   const canAdd = item.kind === "entry" && item.bullets.length > 0 && !fieldsOnly;
   const rowIds = rows.map((r) => r.id);
   const movable = item.kind === "entry" && !fieldsOnly;
-  const showHeader = item.kind === "entry";
+  // Fork: a field-only entry's name is its first field, so it gets no separate
+  // header (that printed the name twice); its buttons sit on the first field's row.
+  const inlineControls = item.kind === "entry" && fieldsOnly && !isHidden;
+  const showHeader = item.kind === "entry" && !inlineControls;
   return (
-    <div className={cn("py-2", isHidden && "opacity-50")}>
+    <div className={cn("relative py-2", isHidden && "opacity-50")}>
+      {inlineControls && (
+        <div className="absolute right-0 top-3 z-10 flex items-center gap-1">
+          {section.items.length > 1 && <MoveButtons parent={section.id} id={item.id} siblings={siblings} first={first} last={last} dispatch={dispatch} label={item.label} />}
+          <HideButton id={item.id} hidden={isHidden} dispatch={dispatch} label={item.label} />
+        </div>
+      )}
       {showHeader && (
         <div className="flex items-start gap-1">
           <p className="min-w-0 flex-1 break-words pt-1 text-sm font-medium leading-snug text-foreground">{item.label}</p>
@@ -158,7 +167,7 @@ function ItemBlock({ item, section, siblings, first, last, ...common }: Common &
         </div>
       )}
       {!isHidden && (
-        <ul className="mt-1 space-y-1.5">
+        <ul className={cn("space-y-1.5", inlineControls ? cn("space-y-0", section.items.length > 1 ? "pr-20" : "pr-8") : "mt-1")}>
           {rows.map((b, k) =>
             "mine" in b ? (
               <MineLine key={b.id} row={b} item={item.id} siblings={rowIds} first={k === 0} last={k === rows.length - 1} movable={movable} dispatch={dispatch} />
@@ -171,7 +180,7 @@ function ItemBlock({ item, section, siblings, first, last, ...common }: Common &
                 </button>
               </li>
             ) : (
-              <BulletRow key={b.id} bullet={b} summary={isSummarySection(section.title)} parent={item.id} siblings={rowIds} first={k === 0} last={k === rows.length - 1} movable={movable} {...common} />
+              <BulletRow key={b.id} bullet={b} strong={inlineControls && k === 0} summary={isSummarySection(section.title)} parent={item.id} siblings={rowIds} first={k === 0} last={k === rows.length - 1} movable={movable} {...common} />
             ),
           )}
           {item.restorable.map((r, idx) =>
@@ -276,7 +285,7 @@ function AddLine({ onAdd }: { onAdd: (text: string) => void }) {
   );
 }
 
-function BulletRow({ n, bullet, summary, parent, siblings, first, last, movable, edits, hidden, dispatch, checked, onCheck }: Common & { bullet: StudioBullet; summary: boolean; parent: string; siblings: string[]; first: boolean; last: boolean; movable: boolean }) {
+function BulletRow({ n, bullet, strong, summary, parent, siblings, first, last, movable, edits, hidden, dispatch, checked, onCheck }: Common & { bullet: StudioBullet; strong?: boolean; summary: boolean; parent: string; siblings: string[]; first: boolean; last: boolean; movable: boolean }) {
   const shown = bulletShown(bullet, edits);
   const isHidden = hidden.has(bullet.id);
   const [editing, setEditing] = useState(false);
@@ -339,7 +348,7 @@ function BulletRow({ n, bullet, summary, parent, siblings, first, last, movable,
           </div>
         </div>
       ) : (
-        <p className={cn("leading-relaxed", bullet.field && "flex-1", isHidden ? "text-faint line-through" : "text-foreground")}>
+        <p className={cn("leading-relaxed", bullet.field && "flex-1", strong && "font-medium", isHidden ? "text-faint line-through" : "text-foreground")}>
           {comparing && shown.source === "tailored" && bullet.change === "edited" && bullet.base !== null && bullet.similarity >= REWRITE_FLOOR ? <Diff before={bullet.base} after={bullet.tailored} /> : <Bold text={shown.text} />}
         </p>
       )}
