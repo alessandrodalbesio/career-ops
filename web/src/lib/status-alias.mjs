@@ -32,6 +32,10 @@ export const STATUS_ALIAS = {
   // Speculative — states.yml `speculative`
   spec: "SPECULATIVE",
   gambit: "SPECULATIVE",
+  // Ready to Apply — states.yml `ready`
+  ready: "READY TO APPLY",
+  "ready to apply": "READY TO APPLY",
+  ready_to_apply: "READY TO APPLY",
   // Applied — states.yml `applied`
   aplicado: "APPLIED",
   enviada: "APPLIED",

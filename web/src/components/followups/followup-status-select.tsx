@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Check, Loader2 } from "lucide-react";
-import { CANONICAL_STATES } from "@/lib/format";
+import { PICKER_STATES } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 /**
@@ -21,7 +21,7 @@ export function FollowupStatusSelect({
   current: string;
   onSaved: () => void;
 }) {
-  const initial = CANONICAL_STATES.find((state) => state.toLowerCase() === current.toLowerCase()) ?? current;
+  const initial = PICKER_STATES.find((state) => state.toLowerCase() === current.toLowerCase()) ?? current;
   const [status, setStatus] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -69,8 +69,8 @@ export function FollowupStatusSelect({
           error && "border-red-500/60",
         )}
       >
-        {!CANONICAL_STATES.some((state) => state.toLowerCase() === status.toLowerCase()) && <option value={status}>{status}</option>}
-        {CANONICAL_STATES.map((state) => (
+        {!PICKER_STATES.some((state) => state.toLowerCase() === status.toLowerCase()) && <option value={status}>{status}</option>}
+        {PICKER_STATES.map((state) => (
           <option key={state} value={state}>
             {state}
           </option>

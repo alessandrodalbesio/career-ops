@@ -17,6 +17,7 @@ export { canonStatus, legitimacyTone };
 export const CANONICAL_STATES = [
   "Evaluated",
   "Speculative",
+  "Ready to Apply",
   "Applied",
   "Responded",
   "Assessment",
@@ -28,6 +29,20 @@ export const CANONICAL_STATES = [
   "SKIP",
 ] as const;
 
+/** Fork: the statuses offered in the app's pickers: the ones that have a
+ *  Pipeline tab (SHOWN_PIPELINE_TABS), in tab order. CANONICAL_STATES stays the
+ *  full list the tracker accepts. */
+export const PICKER_STATES = [
+  "Evaluated",
+  "Ready to Apply",
+  "Applied",
+  "Interview",
+  "Offer",
+  "Hired",
+  "Rejected",
+  "Discarded",
+] as const;
+
 /** Status dot colour, mirroring the Go TUI: green hired/interview/offer, sky
  *  applied/responded/assessment, pink speculative, red skip/rejected, gray
  *  discarded, neutral evaluated. */
@@ -37,6 +52,7 @@ export function statusDot(status: string): string {
   if (c.includes("HIRED") || c.includes("INTERVIEW") || c.includes("OFFER")) return "bg-emerald-400";
   if (c.includes("APPLIED") || c.includes("RESPONDED") || c.includes("ASSESSMENT")) return "bg-sky-400";
   if (c.includes("SPECULATIVE")) return "bg-pink-400";
+  if (c.includes("READY")) return "bg-amber-400";
   if (c.includes("REJECTED") || c.includes("SKIP")) return "bg-red-400";
   if (c.includes("DISCARDED")) return "bg-zinc-600";
   return "bg-zinc-500"; // Evaluated / unknown

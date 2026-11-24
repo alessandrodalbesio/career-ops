@@ -7,7 +7,7 @@ import { Search, ChevronsUpDown, X, Compass, ArrowRight, ExternalLink, Download,
 import type { Application, InboxJob } from "@/lib/career-ops";
 import { Badge } from "@/components/ui/badge";
 import { CompanyLogo } from "@/components/company-logo";
-import { CANONICAL_STATES, scoreNum, scoreTone } from "@/lib/format";
+import { PICKER_STATES, scoreNum, scoreTone } from "@/lib/format";
 import { StatusSelect } from "@/components/status-select";
 import { CvCell } from "@/components/pipeline/cv-cell";
 import { Tip } from "@/components/ui/tip";
@@ -765,7 +765,7 @@ export function PipelineView({
                   : "border-transparent text-muted hover:text-foreground",
               )}
             >
-              {t}
+              {t === "READY" ? "READY TO APPLY" : t}
               <span className={cn(
                 "min-w-[1.25rem] rounded-full px-1.5 py-px text-center text-[10px] font-semibold tabular-nums transition-colors",
                 visibleTab === t ? "bg-brand text-brand-foreground" : "bg-surface-hover text-muted",
@@ -853,7 +853,7 @@ export function PipelineView({
             className="rounded-md border border-border bg-surface px-2 py-1 text-sm"
           >
             <option value="">Set status…</option>
-            {CANONICAL_STATES.map((s) => (
+            {PICKER_STATES.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
           </select>

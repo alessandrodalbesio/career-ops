@@ -41,6 +41,7 @@ export const PIPELINE_TABS = /** @type {const} */ ([
   "ALL",
   "EVALUATED",
   "SPECULATIVE",
+  "READY",
   "APPLIED",
   "RESPONDED",
   "ASSESSMENT",
@@ -113,7 +114,7 @@ export function pipelineTab(raw) {
 }
 
 /** Fork: the tabs shown in the Pipeline strip, in order. Other tabs stay reachable by URL. */
-export const SHOWN_PIPELINE_TABS = new Set(["ALL", "EVALUATED", "APPLIED", "INTERVIEW", "OFFER", "HIRED", "REJECTED", "DISCARDED"]);
+export const SHOWN_PIPELINE_TABS = new Set(["ALL", "EVALUATED", "READY", "APPLIED", "INTERVIEW", "OFFER", "HIRED", "REJECTED", "DISCARDED"]);
 
 /**
  * How far the tab strip should scroll so the selected tab is inside it.
