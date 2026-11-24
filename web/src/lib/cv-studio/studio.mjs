@@ -16,7 +16,7 @@
  *
  * @typedef {"same"|"edited"|"new"} Change
  * @typedef {{id: string, tailored: string, base: string|null, change: Change, similarity: number,
- *            keywords: {tailored: string[], base: string[]}, drivenBy: string[]}} StudioBullet
+ *            keywords: {tailored: string[], base: string[]}, drivenBy: string[], field?: boolean}} StudioBullet
  * @typedef {{text: string, keywords: string[]}} Restorable
  * @typedef {{id: string, kind: "entry"|"tag"|"text", label: string, ownKeywords: string[],
  *            bullets: StudioBullet[], restorable: Restorable[]}} StudioItem
@@ -94,7 +94,7 @@ export function buildStudioDoc({ tree, base, keywords, sourceHash, keywordsIn, i
     const kt = keywordsIn(b.text);
     const kb = original === null ? [] : keywordsIn(original);
     const change = original === null ? "new" : original.trim() === b.text.trim() ? "same" : "edited";
-    return { id: b.id, tailored: b.text, base: original, change, similarity: original === null ? 0 : score, keywords: { tailored: kt, base: kb }, drivenBy: kt.filter((k) => !kb.includes(k)) };
+    return { id: b.id, tailored: b.text, base: original, change: b.field ? "same" : change, similarity: original === null ? 0 : score, keywords: { tailored: kt, base: kb }, drivenBy: b.field ? [] : kt.filter((k) => !kb.includes(k)), ...(b.field ? { field: true } : {}) };
   };
   const sections = tree.sections.map((s) => ({
     id: s.id,
@@ -109,7 +109,8 @@ export function buildStudioDoc({ tree, base, keywords, sourceHash, keywordsIn, i
       }
       const entry = item.kind === "entry" && s.kind === "experience" ? base.entries.find((e) => sameCompany(e.company, item.label)) : undefined;
       const originals = entry?.bullets ?? [];
-      const { pairs, scores, unused } = alignBullets(item.bullets.map((b) => b.text), originals);
+      const fields = item.bullets.length > 0 && item.bullets.every((b) => b.field);
+      const { pairs, scores, unused } = fields ? { pairs: item.bullets.map(() => null), scores: item.bullets.map(() => 0), unused: [] } : alignBullets(item.bullets.map((b) => b.text), originals);
       return {
         id: item.id,
         kind: item.kind,

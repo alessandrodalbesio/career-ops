@@ -135,6 +135,8 @@ export function SectionCard({ section, siblings, first, last, ...common }: Commo
 
 function ItemBlock({ item, section, siblings, first, last, ...common }: Common & { item: StudioItem; section: StudioSection; siblings: string[]; first: boolean; last: boolean }) {
   const { hidden, dispatch, edits } = common;
+  // Fork: field-only entries (skills, leadership, languages) edit their words only.
+  const fieldsOnly = item.bullets.length > 0 && item.bullets.every((b) => b.field);
   const isHidden = hidden.has(item.id);
   const restored = edits.restored[item.id] ?? [];
   // Added-back bullets join the tailored ones in one ordered list, so they move like any other.
@@ -142,9 +144,9 @@ function ItemBlock({ item, section, siblings, first, last, ...common }: Common &
   const mine: MineRow[] = Object.entries(edits.extra?.[item.id] ?? {}).map(([key, text]) => ({ id: extraId(item.id, key), key, text, mine: true }));
   const rows = arrange([...item.bullets, ...added, ...mine] as (StudioBullet | AddedRow | MineRow)[], edits.order[item.id]);
   // New lines join an entry's bullet list, so only entries that have one can take them.
-  const canAdd = item.kind === "entry" && item.bullets.length > 0;
+  const canAdd = item.kind === "entry" && item.bullets.length > 0 && !fieldsOnly;
   const rowIds = rows.map((r) => r.id);
-  const movable = item.kind === "entry";
+  const movable = item.kind === "entry" && !fieldsOnly;
   const showHeader = item.kind === "entry";
   return (
     <div className={cn("py-2", isHidden && "opacity-50")}>

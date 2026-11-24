@@ -8,7 +8,7 @@
  * names are build-cv-html.mjs's markup contract, which the web pdf prompt also
  * fills.
  *
- * @typedef {{id: string, start: number, end: number, inner: [number, number], text: string}} Bullet
+ * @typedef {{id: string, start: number, end: number, inner: [number, number], text: string, field?: boolean}} Bullet
  * @typedef {{id: string, kind: "entry"|"tag"|"text", label: string, start: number, end: number, bullets: Bullet[]}} Item
  * @typedef {{id: string, title: string, kind: SectionKind, start: number, end: number, items: Item[]}} Section
  * @typedef {"summary"|"competencies"|"experience"|"projects"|"education"|"skills"|"other"} SectionKind
@@ -96,6 +96,39 @@ function bulletsIn(html, from, to, prefix) {
   return out;
 }
 
+// Fork: entries with no <li> (skills, leadership/awards, languages/certifications)
+// still have text worth editing. Each text span becomes a "field" bullet: its
+// words can change, but it is never moved, hidden or added to on its own.
+const FIELD_SPANS = { "award-item": ["award-title", "award-org"], "cert-item": ["cert-title", "cert-org"] };
+function fieldsIn(html, from, to, prefix, cls) {
+  const out = [];
+  const push = (start, end, inner) => {
+    const text = htmlText(html.slice(...inner)).trim();
+    if (text) out.push({ id: `${prefix}b${out.length}`, start, end, inner, text, field: true });
+  };
+  if (cls === "skill-item") {
+    const cat = new RegExp(`<span class="skill-category"[^>]*>[\\s\\S]*?</span>`, "y");
+    const open = html.indexOf('<span class="skill-category"', from);
+    if (open < 0 || open > to) return out;
+    cat.lastIndex = open;
+    const m = cat.exec(html);
+    if (!m) return out;
+    const after = open + m[0].length;
+    const close = html.lastIndexOf("</div>", to);
+    if (close > after) push(after, close, [after, close]);
+    return out;
+  }
+  for (const c of FIELD_SPANS[cls] ?? []) {
+    const re = new RegExp(`<span class="${c}"[^>]*>([^<]*)</span>`, "g");
+    re.lastIndex = from;
+    const m = re.exec(html);
+    if (!m || m.index > to) continue;
+    const innerStart = m.index + m[0].indexOf(">") + 1;
+    push(m.index, m.index + m[0].length, [innerStart, innerStart + m[1].length]);
+  }
+  return out.sort((a, b) => a.start - b.start).map((b, k) => ({ ...b, id: `${prefix}b${k}` }));
+}
+
 function sectionKind(body) {
   for (const [cls, kind] of KIND_BY_CLASS) if (new RegExp(`class="(?:[^"]*\\s)?${cls}(?:\\s|")`).test(body)) return kind;
   return "other";
@@ -128,7 +161,8 @@ export function parseBlocks(html) {
         items = elementsWithClass(html, el.open, el.end, "div", cls).map((e, k) => {
           const labelMatch = new RegExp(`class="${ENTRY_LABEL_CLASS[cls]}"[^>]*>([\\s\\S]*?)</`).exec(html.slice(e.open, e.end));
           const label = htmlText(labelMatch ? labelMatch[1].split("<")[0] : html.slice(e.open, e.end)).slice(0, 80);
-          return { id: `${id}i${k}`, kind: "entry", label: label.replace(/:$/, ""), start: e.start, end: e.end, bullets: bulletsIn(html, e.open, e.end, `${id}i${k}`) };
+          const lis = bulletsIn(html, e.open, e.end, `${id}i${k}`);
+          return { id: `${id}i${k}`, kind: "entry", label: label.replace(/:$/, ""), start: e.start, end: e.end, bullets: lis.length ? lis : fieldsIn(html, e.open, e.end, `${id}i${k}`, cls) };
         });
       }
     }

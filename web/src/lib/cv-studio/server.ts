@@ -275,6 +275,23 @@ export type RenderOutcome = { ok: true; pdf: string; indexed: boolean; warnings:
  * data/pdf-index.tsv points Apply at the edited PDF. `indexed` is false when
  * the render succeeded but the index still names another PDF.
  */
+// Fork: the sheet the tailored CV was rendered on (data/pdf-index.tsv, 4th
+// column). The HTML alone does not always say: a custom template may give A4
+// only as `.page { max-width: 210mm }`, and a Letter render of an A4 CV spills
+// onto a second page.
+function indexedFormat(root: string, reportNum: string): "a4" | "letter" | null {
+  try {
+    const rows = fs.readFileSync(path.join(root, "data", "pdf-index.tsv"), "utf8").split("\n");
+    for (const row of rows.reverse()) {
+      const cols = row.split("\t");
+      if (cols[0] === reportNum && (cols[3] === "a4" || cols[3] === "letter")) return cols[3];
+    }
+  } catch {
+    // No index: fall back to the HTML.
+  }
+  return null;
+}
+
 export async function renderEditedPdf(load: Extract<StudioLoad, { ok: true }>, edits: StudioEdits): Promise<RenderOutcome> {
   const root = careerOpsRoot();
   const { view, added } = resolveStudio(load.doc, edits);
@@ -285,7 +302,7 @@ export async function renderEditedPdf(load: Extract<StudioLoad, { ok: true }>, e
   const editedPdf = `${editedStem}.pdf`;
   const previousHtml = fs.existsSync(editedHtml) ? fs.readFileSync(editedHtml, "utf8") : null;
   atomicWrite(editedHtml, html);
-  const format = /size:\s*a4/i.test(html) ? "a4" : "letter";
+  const format = indexedFormat(root, load.reportNum) ?? (/size:\s*a4|(?:max-)?width:\s*210mm/i.test(html) ? "a4" : "letter");
   const render = await spawnGeneratePdf({ spawnFn: spawn, execPath: process.execPath, coreRoot: resolveCodeRoot(process.cwd(), process.env), dataRoot: root, html: editedHtml, finalPdf: editedPdf, format, reportNum: load.reportNum });
   // A render over a warn-only page budget exits 0 but leaves nothing at
   // editedPdf (the PDF went to a sibling .overflow.pdf draft, #6377), so the
