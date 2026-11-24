@@ -2171,6 +2171,58 @@ export function isWorkspaceOutputPath(pathValue, rootDir = currentWorkspaceRoot(
   }
 }
 
+/**
+ * Fork (Miao): how far a one-page document spills past the first page, measured
+ * at the real print width (paper size from the injected @page rule, minus
+ * --page-margin), with the current zoom applied. Returns null when it cannot tell.
+ */
+async function measureSpill(page) {
+  if (typeof page.evaluate !== 'function' || typeof page.setViewportSize !== 'function') return null;
+  const dims = await page.evaluate(() => {
+    const setup = document.getElementById('career-ops-page-setup')?.textContent || '';
+    const letter = /size:\s*Letter/i.test(setup);
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;visibility:hidden;width:var(--page-margin, 0.6in);height:0';
+    document.body.appendChild(probe);
+    const margin = probe.getBoundingClientRect().width / (parseFloat(document.documentElement.style.zoom) || 1);
+    probe.style.width = letter ? '8.5in' : '210mm';
+    const w = probe.getBoundingClientRect().width / (parseFloat(document.documentElement.style.zoom) || 1);
+    probe.style.width = letter ? '11in' : '297mm';
+    const h = probe.getBoundingClientRect().width / (parseFloat(document.documentElement.style.zoom) || 1);
+    probe.remove();
+    return { w, h, margin };
+  });
+  if (!dims || !(dims.w > 0) || !(dims.margin >= 0)) return null;
+  const before = page.viewportSize?.() ?? null;
+  try {
+    await page.setViewportSize({ width: Math.round(dims.w - 2 * dims.margin), height: before?.height ?? 1100 });
+    if (typeof page.emulateMedia === 'function') await page.emulateMedia({ media: 'print' });
+    return await page.evaluate((limitUnzoomed) => {
+      const zoom = parseFloat(document.documentElement.style.zoom) || 1;
+      const limit = limitUnzoomed;
+      const top = window.scrollY;
+      const blocks = [...document.body.querySelectorAll('li, p, h1, h2, h3, .section-title, .skill-item, .cert-item, .award-item, .job-header, .project-header, .edu-header, .summary-text, div')]
+        .filter((el) => el.offsetParent !== null && !el.querySelector('li, p, .skill-item, .cert-item, .award-item, div'));
+      let bottom = 0;
+      let first = null;
+      for (const el of blocks) {
+        const r = el.getBoundingClientRect();
+        const b = r.bottom + top;
+        if (b > bottom) bottom = b;
+        if (b > limit && (!first || r.top < first.top)) first = { top: r.top, el };
+      }
+      const px = Math.round(bottom - limit);
+      if (px <= 0) return null;
+      const lh = parseFloat(getComputedStyle(document.body).lineHeight) || 16;
+      const lines = Math.max(1, Math.ceil(px / (lh * zoom)));
+      const text = (first?.el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+      return { px, lines, text };
+    }, dims.h - 2 * dims.margin);
+  } finally {
+    if (before) await page.setViewportSize(before).catch(() => {});
+  }
+}
+
 export function injectPrintPageCss(html, format, country) {
   // The only place the sheet size is set: page.pdf() below runs with
   // preferCSSPageSize, so this @page rule IS the paper. It resolves through
@@ -3487,6 +3539,10 @@ async function renderInPage(browser, html, outputPath, opts = {}) {
         }
       }
       enforcePageBudget(pageCount, budget);
+      // Fork (Miao): say how much spilled, so the automatic trim cuts that much and
+      // no more (it used to cut 6-7 lines for a 2-line spill). Best effort only.
+      const spill = await measureSpill(page).catch(() => null);
+      if (spill) console.warn(`⚠️  Spill: about ${spill.lines} line${spill.lines === 1 ? '' : 's'} (${spill.px}px) spill onto the next page, starting at: "${spill.text}"`);
       // One line a caller can read back: the web layer treats this render as
       // not delivered, since it only sees the exit code and stderr.
       console.warn(`⚠️  Overflow draft: ${draftPath} (${hadPrevious ? 'the existing PDF at the output path was left unchanged' : 'nothing was written to the output path'}). Trim and rerun to write ${outputPath}.`);

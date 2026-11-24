@@ -231,7 +231,10 @@ export function undeliveredRenderError(render, finalPdf) {
     // rather than guess at a page budget.
     return `PDF rendering reported success but wrote nothing to ${path.basename(finalPdf)}.`;
   }
-  const budget = budgetLine ?? "The CV is over its page budget.";
+  // Fork (Miao): generate-pdf says how much spilled ("Spill: about 2 lines … starting at: …");
+  // carried along so the automatic trim cuts that much and no more.
+  const spill = /Spill: (about \d+ lines? \(\d+px\) spill onto the next page, starting at: ".*?")/.exec(render.stderr)?.[1] ?? null;
+  const budget = (budgetLine ?? "The CV is over its page budget.") + (spill ? ` ${spill[0].toUpperCase()}${spill.slice(1)}.` : "");
   const named = draftName ? `${budget} No PDF was written; the over-budget draft is ${draftName}. Trim the CV and render again.` : null;
   return named && named.length <= 200
     ? named

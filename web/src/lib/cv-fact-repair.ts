@@ -11,13 +11,13 @@ export const isFactGateError = (msg: string) => /Fact check failed/i.test(msg);
 export const isOverflowError = (msg: string) => /the allowed maximum is \d+ pages?/i.test(msg);
 
 const LENGTH_TASK = [
-  "A tailored CV came out longer than one page (see the message below), usually by only a few lines. Make it fit on ONE page and return the corrected CV JSON.",
+  "A tailored CV came out longer than one page. The message below says how many lines spill onto page 2 and where the spill starts. Make it fit on ONE page and return the corrected CV JSON.",
   "",
-  "How to cut, in this order, stopping as soon as it surely fits:",
-  "- Remove the bullets least relevant to the job (the job is described by the summary and the CV's focus), starting with the longest. Every job and project keeps at least one bullet or line.",
-  "- Then remove the least relevant project, if there are three or more.",
-  "- Then shorten the summary to one sentence.",
-  "Cut a little more than the overflow (2-4 lines' worth), so it fits with room to spare.",
+  "Cut only what is needed: the number of spilled lines plus one line of margin, no more. A 2-line spill usually means removing ONE bullet (a bullet that wraps to 2 lines). If the message gives no line count, cut about 3 lines.",
+  "How to cut, in this order, stopping as soon as the target is reached:",
+  "- Remove the bullet least relevant to the job (the job is described by the summary and the CV's focus); prefer a long one. Never take a job below 2 bullets or a project below 1.",
+  "- Then remove a second project, if there are two.",
+  "- Only as a last resort shorten the summary.",
   "Never change the wording of the lines you keep. Never add anything. Never remove contact details, job titles, employers, schools or dates. Keep the same JSON keys and structure.",
 ];
 
