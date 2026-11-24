@@ -25,6 +25,7 @@ import { buildPrompt, isShellSafeCompanyName } from "@/lib/run-prompts.mjs";
 import { isTruncatedJd, prefetchJd } from "@/lib/jd-prefetch.mjs";
 import { runCoreCli } from "@/lib/core-cli";
 import { parseCoverRequest } from "@/lib/cover-brief.mjs";
+import { readBrandBrief, saveBrandBrief } from "@/lib/brand-brief-store.mjs";
 import { capabilitiesFor } from "@/lib/worker-capabilities.mjs";
 import { fencingReport, isCliAllowedForCapabilities } from "@/lib/cli-fencing.mjs";
 import { claudeCliArgs } from "@/lib/claude-invocation.mjs";
@@ -180,6 +181,14 @@ export async function POST(req: Request) {
     });
   }
 
+  // Fork: the brand briefing reads the report for the company and the posting.
+  let briefReportFile: string | undefined;
+  if (kind === "brand-brief") {
+    const found = typeof input === "string" && /^\d+$/.test(input) ? findReportFile(input) : null;
+    if (!found) return Response.json({ error: `No report #${input} found. Evaluate this posting first.` }, { status: 400 });
+    briefReportFile = path.relative(careerOpsRoot(), found).split(path.sep).join("/");
+  }
+
   // Resolve the posting date HERE rather than asking the agent for it. The
   // scanner already wrote it from the provider's own `offer.postedAt`, so this
   // copies a recorded value instead of inviting a guess — and modes/oferta.md is
@@ -253,8 +262,10 @@ export async function POST(req: Request) {
       pageFormat,
       // The worker's cwd is the data root; modes, templates and scripts live in the checkout.
       codeRoot,
-      reportFile: pdfPaths?.reportFile ?? (coverRequest?.ok ? coverRequest.reportFile : undefined),
+      reportFile: pdfPaths?.reportFile ?? (coverRequest?.ok ? coverRequest.reportFile : undefined) ?? briefReportFile,
       coverBrief: coverRequest?.ok ? coverRequest.brief : undefined,
+      // Fork: a saved brand briefing replaces the cover run's own brand research.
+      brandBrief: coverRequest?.ok ? readBrandBrief(careerOpsRoot(), input)?.text ?? null : null,
       profile: profileRef(careerOpsRoot()),
       evaluationInstructions: instructionFile?.reference,
       prefetchedJd,
@@ -431,6 +442,8 @@ export async function POST(req: Request) {
       // cannot directly declare a gated outcome. Process integrity is checked
       // first at close, before this text can be treated as a terminal stop.
       let evaluationText = "";
+      // Fork: the brand briefing's text, saved per report when the run ends cleanly.
+      let briefText = "";
       // While the agent emits the 15-25 KB <<cv-html>> envelope, cvFilter swallows
       // every byte, so the response stream goes completely silent for as long as
       // the model takes to write the CV — a minute or more. Nothing downstream can
@@ -441,6 +454,7 @@ export async function POST(req: Request) {
       // ignored by the client's switch, so this is safe for older tabs too.
       const sendAgentText = (text: string) => {
         if (kind === "evaluate") evaluationText += text;
+        if (kind === "brand-brief") briefText += text;
         const filter = cvFilter ?? reportFilter;
         const visible = filter ? filter.push(text) : text;
         if (visible) send({ type: "text", text: visible });
@@ -616,6 +630,9 @@ export async function POST(req: Request) {
           processParsedLine(trailing);
         }
         const cleanExit = code === 0; // non-zero OR null (killed/signal) = NOT clean
+        if (kind === "brand-brief" && cleanExit && typeof input === "string") {
+          try { saveBrandBrief(careerOpsRoot(), input, briefText); } catch (e) { console.error("[career-ops] Could not save the brand briefing:", e); }
+        }
         // Shared by both honesty gates below — the pdf gate receives it as
         // pdfRunOutcome's noOutputMessage — because a CLI that produced no output at
         // all is the same failure mode whether it was evaluating or tailoring

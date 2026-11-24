@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { COVER_QUESTIONS, coverAnswersText, storedCoverBrief } from "@/lib/cover-answers.mjs";
-import { COVER_TONES } from "@/lib/cover-tones.mjs";
 
 // The answers a cover run was started with. Shown whatever the run's outcome, so
 // a failed draft does not take the user's own writing with it (#7441), and
@@ -44,12 +43,6 @@ export function CoverAnswers({ brief: stored }: { brief: unknown }) {
             <dd className="mt-0.5 whitespace-pre-wrap break-words text-muted">{brief[q.name].trim() || "No answer"}</dd>
           </div>
         ))}
-        {brief.tone && (
-          <div>
-            <dt className="font-medium text-foreground">Tone</dt>
-            <dd className="mt-0.5 text-muted">{COVER_TONES[brief.tone]}</dd>
-          </div>
-        )}
       </dl>
     </section>
   );

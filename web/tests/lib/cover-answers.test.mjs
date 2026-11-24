@@ -13,9 +13,10 @@ import { restoreStoredJobs } from "../../src/lib/jobs-persist.mjs";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const BRIEF = {
-  why: "Their platform team runs the training cluster I want to own.",
-  problem: "Model rollouts take days.",
-  approach: "Map the rollout path in week one.",
+  hook: "My grandmother kept the blue tin on her dresser.",
+  today: "I noticed the new packaging in Vienna.",
+  value: "Sunday dinners at home.",
+  wink: "Five creams live in my bag.",
   tone: "direct",
 };
 
@@ -30,11 +31,11 @@ test("storedCoverBrief: a job saved before answers were kept has none", () => {
 });
 
 test("storedCoverBrief: answers that are all blank are not shown", () => {
-  assert.equal(storedCoverBrief({ why: " ", problem: "", approach: "\n", tone: "formal" }), null);
+  assert.equal(storedCoverBrief({ hook: " ", today: "", value: "\n", wink: "", tone: "formal" }), null);
 });
 
 test("storedCoverBrief: a stored value that is not text reads as unanswered", () => {
-  assert.deepEqual(storedCoverBrief({ ...BRIEF, problem: { text: "x" } }), { ...BRIEF, problem: "" });
+  assert.deepEqual(storedCoverBrief({ ...BRIEF, today: { text: "x" } }), { ...BRIEF, today: "" });
 });
 
 test("storedCoverBrief: a tone the form does not offer is dropped, inherited keys included", () => {
@@ -43,22 +44,20 @@ test("storedCoverBrief: a tone the form does not offer is dropped, inherited key
   }
 });
 
-test("coverAnswersText: letters the answers as modes/cover.md Step 6 asks for them", () => {
+test("coverAnswersText: letters the four answers", () => {
   assert.equal(
     coverAnswersText(BRIEF),
     [
-      "A. Why this role or company?\nTheir platform team runs the training cluster I want to own.",
-      "B. What problem would you solve for them?\nModel rollouts take days.",
-      "C. How would you approach it on day one?\nMap the rollout path in week one.",
-      "D. Tone\nDirect",
+      "A. A memory with the brand\nMy grandmother kept the blue tin on her dresser.",
+      "B. The brand today\nI noticed the new packaging in Vienna.",
+      "C. Their values in your life\nSunday dinners at home.",
+      "D. Something small and funny about you\nFive creams live in my bag.",
     ].join("\n\n"),
   );
 });
 
-test("coverAnswersText: a blank answer is marked and an unknown tone is left out", () => {
-  const text = coverAnswersText({ ...BRIEF, approach: "  ", tone: null });
-  assert.match(text, /C\. How would you approach it on day one\?\n\(no answer\)$/);
-  assert.doesNotMatch(text, /D\. Tone/);
+test("coverAnswersText: a blank answer is marked", () => {
+  assert.match(coverAnswersText({ ...BRIEF, wink: "  " }), /D\. Something small and funny about you\n\(no answer\)$/);
 });
 
 test("COVER_QUESTIONS: the form's fields are the ones the route accepts", () => {

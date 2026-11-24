@@ -14,6 +14,7 @@ import { BackLink } from "@/components/back-link";
 import { CompanyLogo } from "@/components/company-logo";
 import { GeneratePdfButton } from "@/components/generate-pdf-button";
 import { CoverDraftButton } from "@/components/cover-draft-button";
+import { BrandBriefButton } from "@/components/brand-brief-button";
 import { DeleteFromTracker } from "@/components/delete-from-tracker";
 import { ApplyChecks, EvaluationSections } from "@/components/evaluation-sections";
 import { companyPresentation } from "@/lib/company-presentation.mjs";
@@ -134,6 +135,12 @@ export function ReportView({
           </section>
 
           <ApplyChecks sections={fullReport} />
+
+          {app && (
+            <div className="mt-6 print:hidden">
+              <BrandBriefButton n={id} company={companyName} />
+            </div>
+          )}
 
           <div className="mt-6 grid grid-cols-1 items-start gap-4 sm:grid-cols-2 print:hidden">
             {spend.generateCv && (

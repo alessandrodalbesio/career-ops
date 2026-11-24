@@ -11,10 +11,12 @@ import { COVER_TONES } from "./cover-tones.mjs";
 export { COVER_TONES };
 
 const MAX_ANSWER = 1000;
-const ANSWER_FIELDS = ["why", "problem", "approach"];
+// Fork: Greta's four letter questions; the last one (the wink) may stay blank.
+const ANSWER_FIELDS = ["hook", "today", "value"];
+const OPTIONAL_FIELDS = ["wink"];
 
 /**
- * @typedef {{why: string, problem: string, approach: string, tone: keyof typeof COVER_TONES}} CoverBrief
+ * @typedef {{hook: string, today: string, value: string, wink: string, tone: keyof typeof COVER_TONES}} CoverBrief
  */
 
 /**
@@ -27,21 +29,22 @@ export function parseCoverRequest({ input, brief, root, findReportFile }) {
   }
   if (!/^\d+$/.test(input)) return { ok: false, error: `Invalid report selector: "${input}"` };
 
-  const incomplete = { ok: false, error: "Answer all four cover letter questions first." };
+  const incomplete = { ok: false, error: "Answer the first three cover letter questions first." };
   if (brief === null || typeof brief !== "object") return incomplete;
   const answers = ANSWER_FIELDS.map((field) => (typeof brief[field] === "string" ? brief[field].trim() : ""));
   if (answers.some((a) => !a) || typeof brief.tone !== "string" || !Object.hasOwn(COVER_TONES, brief.tone)) {
     return incomplete;
   }
-  if (answers.some((a) => a.length > MAX_ANSWER)) return { ok: false, error: `Keep each answer to ${MAX_ANSWER} characters or fewer.` };
+  const [wink] = OPTIONAL_FIELDS.map((field) => (typeof brief[field] === "string" ? brief[field].trim() : ""));
+  if ([...answers, wink].some((a) => a.length > MAX_ANSWER)) return { ok: false, error: `Keep each answer to ${MAX_ANSWER} characters or fewer.` };
 
   const reportFile = findReportFile(input);
   if (!reportFile) return { ok: false, error: `No report #${input} found. Evaluate this posting first.` };
 
-  const [why, problem, approach] = answers;
+  const [hook, today, value] = answers;
   return {
     ok: true,
     reportFile: path.relative(root, reportFile).split(path.sep).join("/"),
-    brief: { why, problem, approach, tone: brief.tone },
+    brief: { hook, today, value, wink, tone: brief.tone },
   };
 }

@@ -13,16 +13,18 @@
  */
 import { COVER_TONES } from "./cover-tones.mjs";
 
-/** Step 6's A–C prompts as the report page asks them. D is the tone. */
-export const COVER_QUESTIONS = Object.freeze([
-  Object.freeze({ step: "A", name: "why", label: "Why this role or company?", hint: "One or two angles: scale, mission, stage, or what you would learn." }),
-  Object.freeze({ step: "B", name: "problem", label: "What problem would you solve for them?", hint: "The research step checks this against what the company says publicly." }),
-  Object.freeze({ step: "C", name: "approach", label: "How would you approach it on day one?", hint: "One or two sentences. This is the most specific part of the letter." }),
-]);
-
 /**
- * @typedef {{why: string, problem: string, approach: string, tone: keyof typeof COVER_TONES | null}} StoredCoverBrief
+ * Fork: Greta's letter questions (2026-11-24), one per part of her letter template
+ * in modes/_custom.md. They replace cover.md Step 6's why / problem / approach.
+ * A brand briefing run writes brand-specific versions of the same four questions;
+ * the form shows those in place of these labels when there is one.
  */
+export const COVER_QUESTIONS = Object.freeze([
+  Object.freeze({ step: "A", name: "hook", label: "A memory with the brand", hint: "A moment with one of their products: who was there, where, which detail stuck." }),
+  Object.freeze({ step: "B", name: "today", label: "The brand today", hint: "How you come across them now: something you use, an ad, packaging, a shop, how they look in another country." }),
+  Object.freeze({ step: "C", name: "value", label: "Their values in your life", hint: "A moment in your life that matches what the brand stands for." }),
+  Object.freeze({ step: "D", name: "wink", label: "Something small and funny about you", hint: "Optional. A light detail about you that fits the brand.", optional: true }),
+]);
 
 /**
  * The answers stored on a job, or null when it has none to show.
@@ -42,7 +44,7 @@ export function storedCoverBrief(value) {
   const tone = typeof record.tone === "string" && Object.hasOwn(COVER_TONES, record.tone)
     ? /** @type {keyof typeof COVER_TONES} */ (record.tone)
     : null;
-  const brief = { why: answer("why"), problem: answer("problem"), approach: answer("approach"), tone };
+  const brief = { hook: answer("hook"), today: answer("today"), value: answer("value"), wink: answer("wink"), tone };
   return COVER_QUESTIONS.some((q) => brief[q.name].trim()) ? brief : null;
 }
 
@@ -56,6 +58,5 @@ export function storedCoverBrief(value) {
  */
 export function coverAnswersText(brief) {
   const blocks = COVER_QUESTIONS.map((q) => `${q.step}. ${q.label}\n${brief[q.name].trim() || "(no answer)"}`);
-  if (brief.tone) blocks.push(`D. Tone\n${COVER_TONES[brief.tone]}`);
   return blocks.join("\n\n");
 }

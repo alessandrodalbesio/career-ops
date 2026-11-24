@@ -1,4 +1,4 @@
-import { House, Compass, ListChecks, Send, Radar, BarChart3, FileText, Files, Settings, CalendarClock, FolderOpen, UserRound, ScrollText, History } from "lucide-react";
+import { House, Compass, ListChecks, Send, Radar, BarChart3, FileText, Files, Mail, Settings, CalendarClock, FolderOpen, UserRound, ScrollText, History } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 
 // Single source of truth for the app's primary destinations — shared by the
@@ -21,6 +21,8 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/portals", label: "Portals", icon: Radar },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/cv", label: "CV", icon: FileText },
+  // Fork: Greta's cover letter template.
+  { href: "/cover-letter", label: "Cover letter", icon: Mail },
   { href: "/profile", label: "Profile", icon: UserRound, group: "settings" },
   { href: "/rules", label: "Rules", icon: ScrollText, group: "settings" },
   { href: "/jobs", label: "Run history", icon: History, group: "settings" },

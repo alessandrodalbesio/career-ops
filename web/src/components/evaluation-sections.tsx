@@ -3,7 +3,8 @@
 // by heading and rendered as cards; developer sections are dropped; anything else
 // stays available under "More details". Unparseable content falls back to markdown.
 import type { ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ListChecks } from "lucide-react";
+import { FoldCard } from "@/components/ui/fold-card";
 import { cn } from "@/lib/cn";
 import { ReportMarkdown } from "@/components/report-markdown";
 import { cleanHeading } from "@/lib/report-sections.mjs";
@@ -140,7 +141,12 @@ export function ApplyChecks({ sections }: { sections: Section[] }) {
   const evidence = sections.find((s) => is(s.heading, /score evidence/));
   const checks = evidence ? checksFrom(evidence.content) : null;
   if (!checks) return null;
-  return <Card title="Check before you apply" className="mt-4"><Prose md={checks} /></Card>;
+  const count = checks.split("\n").filter((l) => /^\s*(\d+\.|-)\s/.test(l)).length;
+  return (
+    <FoldCard icon={<ListChecks className="size-5" />} title="Check before you apply" status={`${count} thing${count === 1 ? "" : "s"} to confirm`} className="mt-4">
+      <Prose md={checks} />
+    </FoldCard>
+  );
 }
 
 export function EvaluationSections({ sections }: { sections: Section[] }) {

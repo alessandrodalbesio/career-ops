@@ -11,9 +11,10 @@ const ROOT = path.join(path.sep, "tmp", "career-ops");
 const REPORT = path.join(ROOT, "reports", "041-acme-2026-10-01.md");
 const findReportFile = (n) => (Number(n) === 41 ? REPORT : null);
 const BRIEF = {
-  why: "  Their platform team runs the training cluster I want to own.  ",
-  problem: "Model rollouts take days.",
-  approach: "Map the rollout path in week one.",
+  hook: "  My grandmother kept the blue tin on her dresser.  ",
+  today: "I noticed the new packaging in Vienna.",
+  value: "Sunday dinners at home.",
+  wink: "Five creams live in my bag.",
   tone: "direct",
 };
 
@@ -24,34 +25,35 @@ test("parseCoverRequest: a full brief for an evaluated row resolves its report a
     ok: true,
     reportFile: "reports/041-acme-2026-10-01.md",
     brief: {
-      why: "Their platform team runs the training cluster I want to own.",
-      problem: "Model rollouts take days.",
-      approach: "Map the rollout path in week one.",
+      hook: "My grandmother kept the blue tin on her dresser.",
+      today: "I noticed the new packaging in Vienna.",
+      value: "Sunday dinners at home.",
+      wink: "Five creams live in my bag.",
       tone: "direct",
     },
   });
 });
 
-test("parseCoverRequest: a blank answer is refused, because cover.md drafts nothing until all four are in", () => {
-  const result = parseCoverRequest({ input: "041", brief: { ...BRIEF, approach: "   " }, root: ROOT, findReportFile });
+test("parseCoverRequest: a blank required answer is refused", () => {
+  const result = parseCoverRequest({ input: "041", brief: { ...BRIEF, value: "   " }, root: ROOT, findReportFile });
 
-  assert.deepEqual(result, { ok: false, error: "Answer all four cover letter questions first." });
+  assert.deepEqual(result, { ok: false, error: "Answer the first three cover letter questions first." });
 });
 
 test("parseCoverRequest: a tone the mode does not offer is refused", () => {
   const result = parseCoverRequest({ input: "041", brief: { ...BRIEF, tone: "playful" }, root: ROOT, findReportFile });
 
-  assert.deepEqual(result, { ok: false, error: "Answer all four cover letter questions first." });
+  assert.deepEqual(result, { ok: false, error: "Answer the first three cover letter questions first." });
 });
 
 test("parseCoverRequest: a missing brief is refused", () => {
   const result = parseCoverRequest({ input: "041", brief: undefined, root: ROOT, findReportFile });
 
-  assert.deepEqual(result, { ok: false, error: "Answer all four cover letter questions first." });
+  assert.deepEqual(result, { ok: false, error: "Answer the first three cover letter questions first." });
 });
 
 test("parseCoverRequest: an answer past the length cap is refused, not cut", () => {
-  const result = parseCoverRequest({ input: "041", brief: { ...BRIEF, why: "x".repeat(1001) }, root: ROOT, findReportFile });
+  const result = parseCoverRequest({ input: "041", brief: { ...BRIEF, hook: "x".repeat(1001) }, root: ROOT, findReportFile });
 
   assert.deepEqual(result, { ok: false, error: "Keep each answer to 1000 characters or fewer." });
 });
@@ -94,5 +96,11 @@ test("parseCoverRequest: a non-string tone is refused as incomplete", () => {
     findReportFile,
   });
   assert.equal(result.ok, false);
-  assert.equal(result.error, "Answer all four cover letter questions first.");
+  assert.equal(result.error, "Answer the first three cover letter questions first.");
+});
+
+test("parseCoverRequest: the wink may stay blank", () => {
+  const result = parseCoverRequest({ input: "041", brief: { ...BRIEF, wink: " " }, root: ROOT, findReportFile });
+  assert.equal(result.ok, true);
+  assert.equal(result.brief.wink, "");
 });
