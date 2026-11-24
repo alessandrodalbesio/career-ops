@@ -343,9 +343,110 @@ export function ProfileEditor() {
               </div>
             </section>
           ))}
+          {tab === "want" && <BriefCard />}
         </div>
       )}
     </div>
+  );
+}
+
+// ── How Miao filters jobs (modes/_brief.md: what triage and scans score against) ──
+function BriefCard() {
+  const [saved, setSaved] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState<"rebuild" | "save" | null>(null);
+  const [note, setNote] = useState<{ error?: boolean; msg: string } | null>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    fetch("/api/profile/brief", { cache: "no-store" })
+      .then((r) => r.json() as Promise<{ text: string }>)
+      .then((d) => { setSaved(d.text); setText(d.text); })
+      .catch(() => setNote({ error: true, msg: "The brief could not be read." }));
+  }, []);
+  useEffect(() => grow(box.current), [text]);
+
+  const rebuild = async () => {
+    setBusy("rebuild");
+    setNote({ msg: "Miao is rewriting the brief from your profile. This takes about a minute…" });
+    try {
+      const r = await fetch("/api/profile/brief", { method: "POST" });
+      const d = (await r.json().catch(() => ({}))) as { text?: string; error?: string };
+      if (!r.ok || !d.text) throw new Error(d.error ?? "Could not rebuild the brief.");
+      setText(d.text);
+      setNote({ msg: "Here is the new version. Check it, then click Save." });
+    } catch (e) {
+      setNote({ error: true, msg: e instanceof Error ? e.message : "Could not rebuild the brief." });
+    } finally {
+      setBusy(null);
+    }
+  };
+  const saveBrief = async () => {
+    setBusy("save");
+    try {
+      const r = await fetch("/api/profile/brief", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+      const d = (await r.json().catch(() => ({}))) as { error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Not saved.");
+      setSaved(text);
+      setNote({ msg: "Saved." });
+    } catch (e) {
+      setNote({ error: true, msg: e instanceof Error ? e.message : "Not saved." });
+    } finally {
+      setBusy(null);
+    }
+  };
+  const dirty = saved !== null && text !== saved;
+
+  return (
+    <section className="rounded-2xl border border-border bg-surface">
+      <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
+        <div>
+          <h2 className="text-base font-semibold text-foreground">How Miao filters jobs</h2>
+          <p className="text-sm text-muted">
+            The short version of your profile that the quick first check reads when it scores new jobs. After you change your roles, places or languages, click
+            “Rebuild from profile” so it stays in step.
+          </p>
+        </div>
+        <UsedFor items={["Scans", "Quick check"]} />
+      </div>
+      <div className="space-y-3 px-6 py-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={rebuild}
+            disabled={busy !== null || saved === null}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-background disabled:opacity-50"
+          >
+            {busy === "rebuild" && <Loader2 className="size-3.5 animate-spin" />} Rebuild from profile
+          </button>
+          <button
+            type="button"
+            onClick={saveBrief}
+            disabled={busy !== null || !dirty}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50"
+          >
+            {busy === "save" ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />} Save
+          </button>
+          {dirty && (
+            <button type="button" onClick={() => { setText(saved ?? ""); setNote(null); }} disabled={busy !== null} className="text-sm text-muted hover:text-foreground">
+              Undo changes
+            </button>
+          )}
+          {note && <span className={cn("text-xs", note.error ? "text-red-700" : "text-faint")}>{note.msg}</span>}
+        </div>
+        {saved === null && !note?.error ? (
+          <div className="flex justify-center py-8 text-muted"><Loader2 className="size-5 animate-spin" /></div>
+        ) : (
+          <textarea
+            ref={box}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            spellCheck={false}
+            className={cn(editable, "min-h-40 resize-none overflow-hidden font-mono text-xs leading-relaxed")}
+          />
+        )}
+      </div>
+    </section>
   );
 }
 
