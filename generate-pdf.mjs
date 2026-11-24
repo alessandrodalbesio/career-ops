@@ -3454,10 +3454,11 @@ async function renderInPage(browser, html, outputPath, opts = {}) {
     let pageCount = countRenderedPdfPages(pdfBuffer);
 
     // Fork (Miao): a one-page CV or cover letter that spills onto page 2 is shrunk a little,
-    // in small steps down to 85%, until it fits. Only for CVs with a one-page
+    // one step to 97% at most (it used to go down to 85%, which made the text too small
+    // to read); past that the content has to be trimmed instead. Only for CVs with a one-page
     // budget; anything that still does not fit keeps the overflow handling below.
     if ((artifactKind === 'cv' || artifactKind === 'cover') && budget.maxPages === 1 && pageCount > 1 && typeof page.evaluate === 'function') {
-      for (let zoom = 0.97; zoom >= 0.849 && pageCount > 1; zoom -= 0.03) {
+      for (let zoom = 0.97; zoom >= 0.969 && pageCount > 1; zoom -= 0.03) {
         await page.evaluate((z) => { document.documentElement.style.zoom = String(z); }, zoom);
         pdfBuffer = await renderPdf();
         pageCount = countRenderedPdfPages(pdfBuffer);
