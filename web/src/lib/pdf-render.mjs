@@ -128,10 +128,10 @@ export function pdfFingerprint(file) {
  * this render has a new identity, one that was kept or never written has the
  * old one (or none). Every caller reads `delivered`, so the judgement lives
  * here and not in one of them.
- * @param {{spawnFn: Function, execPath: string, coreRoot: string, html: string, finalPdf: string, format: "letter"|"a4", reportNum: string, dataRoot?: string}} args
+ * @param {{spawnFn: Function, execPath: string, coreRoot: string, html: string, finalPdf: string, format: "letter"|"a4", reportNum: string, dataRoot?: string, factCheck?: "block"|"warn"}} args
  * @returns {Promise<{ok: boolean, delivered: boolean, stderr: string}>}
  */
-export function spawnGeneratePdf({ spawnFn, execPath, coreRoot, html, finalPdf, format, reportNum, dataRoot }) {
+export function spawnGeneratePdf({ spawnFn, execPath, coreRoot, html, finalPdf, format, reportNum, dataRoot, factCheck = "block" }) {
   if (dataRoot && !fs.existsSync(dataRoot)) {
     return Promise.resolve({ ok: false, delivered: false, stderr: dataFolderMissingMessage(dataRoot) });
   }
@@ -145,7 +145,8 @@ export function spawnGeneratePdf({ spawnFn, execPath, coreRoot, html, finalPdf, 
       // from the template's fixed markup order, so this guard would otherwise
       // hard-fail every web-triggered render — same bypass a human already
       // applies manually via the CLI when this diverges.
-      [path.join(coreRoot, "generate-pdf.mjs"), html, finalPdf, `--format=${format}`, `--report=${reportNum}`, "--allow-reorder"],
+      // Fork: factCheck "warn" (CV studio hand edits) reports fact-check findings without blocking.
+      [path.join(coreRoot, "generate-pdf.mjs"), html, finalPdf, `--format=${format}`, `--report=${reportNum}`, "--allow-reorder", ...(factCheck === "warn" ? ["--fact-check-warn-only"] : [])],
       // windowsHide: see api/doctor/route.ts — a stale inherited console
       // kills every child with 0xC0000142 on Windows; never inherit one.
       {

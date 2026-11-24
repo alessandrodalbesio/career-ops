@@ -2462,7 +2462,18 @@ async function updatePDFManifest(reportNum, pdfPath, htmlPath, format, kind) {
  * @returns {Promise<void>} Resolves when the document passes, or only warns without strict mode.
  * @throws {Error} When the voice check or the fact gate rejects the document, or a warning is fatal under strict mode.
  */
-async function runFactGate(html, label, rawHtml = html, { strictFactCheck = false } = {}) {
+async function runFactGate(html, label, rawHtml = html, { strictFactCheck = false, warnOnly = false } = {}) {
+  // Fork (Miao): --fact-check-warn-only, used for CVs the user edited by hand in the
+  // CV studio. The checks still run and everything they find is printed as a
+  // warning, but nothing stops the PDF: the user wrote those words.
+  if (warnOnly) {
+    try {
+      await runFactGate(html, label, rawHtml, { strictFactCheck: false });
+    } catch (e) {
+      console.warn(`⚠️  Not blocking (hand-edited CV): ${e instanceof Error ? e.message : String(e)}`);
+    }
+    return;
+  }
   // Imported lazily, by the callers' guard. A static import is resolved at module
   // load whether or not the gate runs, and the page-budget/batch suites copy
   // generate-pdf.mjs alone into a temp workspace — a static import of a sibling
@@ -2543,6 +2554,7 @@ async function generatePDF() {
   const args = process.argv.slice(2);
   let skipFactCheck = false;
   let strictFactCheck = false;
+  let factCheckWarnOnly = false;
   let uploadCopyFlag = false, uploadRole = '';
 
   // Parse arguments
@@ -2623,6 +2635,8 @@ async function generatePDF() {
       strictFactCheck = true;
     } else if (arg === '--skip-fact-check') {
       skipFactCheck = true;
+    } else if (arg === '--fact-check-warn-only') {
+      factCheckWarnOnly = true;
     } else if (arg === '--upload-copy') {
       uploadCopyFlag = true;
     } else if (arg.startsWith('--upload-role=')) {
@@ -2844,7 +2858,7 @@ async function generatePDF() {
 
   // Fact gate, on the normalized HTML: the document that actually prints.
   if (!skipFactCheck) {
-    if (cvMarkdown) await runFactGate(html, basename(inputPath), rawHtml, { strictFactCheck });
+    if (cvMarkdown) await runFactGate(html, basename(inputPath), rawHtml, { strictFactCheck, warnOnly: factCheckWarnOnly });
     else warnFactGateNotRun();
   }
 

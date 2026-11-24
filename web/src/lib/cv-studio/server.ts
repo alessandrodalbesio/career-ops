@@ -303,7 +303,7 @@ export async function renderEditedPdf(load: Extract<StudioLoad, { ok: true }>, e
   const previousHtml = fs.existsSync(editedHtml) ? fs.readFileSync(editedHtml, "utf8") : null;
   atomicWrite(editedHtml, html);
   const format = indexedFormat(root, load.reportNum) ?? (/size:\s*a4|(?:max-)?width:\s*210mm/i.test(html) ? "a4" : "letter");
-  const render = await spawnGeneratePdf({ spawnFn: spawn, execPath: process.execPath, coreRoot: resolveCodeRoot(process.cwd(), process.env), dataRoot: root, html: editedHtml, finalPdf: editedPdf, format, reportNum: load.reportNum });
+  const render = await spawnGeneratePdf({ spawnFn: spawn, execPath: process.execPath, coreRoot: resolveCodeRoot(process.cwd(), process.env), dataRoot: root, html: editedHtml, finalPdf: editedPdf, format, reportNum: load.reportNum, factCheck: "warn" });
   // A render over a warn-only page budget exits 0 but leaves nothing at
   // editedPdf (the PDF went to a sibling .overflow.pdf draft, #6377), so the
   // exit code alone would keep an HTML and mark the tracker ready for a PDF
