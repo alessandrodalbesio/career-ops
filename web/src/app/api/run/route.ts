@@ -18,6 +18,7 @@ import { renderAndMarkPdf, writeCvHtml, pdfRunOutcome } from "@/lib/pdf-render.m
 import { materializeTailoredCv, withSharedPdfPath } from "@/lib/cv-from-json.mjs";
 import { saveBuiltCv } from "@/lib/pdf-run-save.mjs";
 import { isFactGateError, isOverflowError, repairCvPayload } from "@/lib/cv-fact-repair";
+import { checkCvLines, describeShortLines } from "@/lib/cv-line-check.mjs";
 import { createCvEnvelopeFilter } from "@/lib/cv-envelope.mjs";
 import { createReportEnvelopeFilter } from "@/lib/report-envelope.mjs";
 import { persistEvaluation, evaluateRunOutcome, evaluationOutcomeEvent } from "@/lib/report-persist.mjs";
@@ -683,9 +684,11 @@ export async function POST(req: Request) {
                 // Fork: one automatic retry when the fact gate blocks the CV
                 // (cv-fact-repair.ts). Any other failure is reported as before.
                 let current = { ...envelope, format: sheet.format };
-                const retried = { facts: false, length: false };
+                const retried = { facts: false, length: false, lines: 0 };
                 for (let attempt = 0; ; attempt++) {
                 let failure = null as string | null;
+                // Fork: lines whose last line holds only a word or two, found before rendering.
+                let shortLines = null as Awaited<ReturnType<typeof checkCvLines>> | null;
                 await saveBuiltCv({
                   build: async () => {
                     if (scratchDir) { const previous = scratchDir; scratchDir = ""; try { fs.rmSync(previous, { recursive: true, force: true }); } catch { /* ignore */ } }
@@ -707,8 +710,28 @@ export async function POST(req: Request) {
                   onError: (error) => { failure = error; },
                   onWarnings: sendWarnings,
                   save: (built) => saveCv(pdfPaths, { html: built.html }),
-                  render: async (built) => { failure = await renderPdf(pdfPaths, sheet.format, built.ats); },
+                  render: async (built) => {
+                    // Fork: check line fill on the saved HTML before rendering. Up to two
+                    // rewrite rounds; after that the PDF is made anyway and the lines are named.
+                    if (current.kind === "json" && current.payload) {
+                      send({ type: "status", label: "Checking for short lines…" });
+                      const flagged = await checkCvLines(codeRoot, pdfPaths.html);
+                      if (flagged.length && retried.lines < 2) { shortLines = flagged; return; }
+                      if (flagged.length) send({ type: "text", text: `Note: ${flagged.length} line(s) still end with a word or two after two fixes:\n${describeShortLines(flagged)}\n` });
+                    }
+                    failure = await renderPdf(pdfPaths, sheet.format, built.ats);
+                  },
                 });
+                if (shortLines && !closed && current.kind === "json" && current.payload) {
+                  retried.lines++;
+                  send({ type: "text", text: `⚠️ ${shortLines.length} line(s) end with only a word or two. Rewriting them.\n` });
+                  send({ type: "status", label: "Tightening short lines…" });
+                  const fix = await repairCvPayload(cliId, current.payload as Record<string, unknown>, describeShortLines(shortLines), "lines");
+                  if (closed) break;
+                  if (fix.ok) current = { ...current, payload: fix.payload };
+                  else retried.lines = 2; // could not fix: next pass renders as is
+                  continue;
+                }
                 if (!failure || closed) break;
                 const problem = isFactGateError(failure) ? "facts" : isOverflowError(failure) ? "length" : null;
                 if (problem && !retried[problem] && current.kind === "json" && current.payload) {

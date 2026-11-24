@@ -21,6 +21,18 @@ const LENGTH_TASK = [
   "Never change the wording of the lines you keep. Never add anything. Never remove contact details, job titles, employers, schools or dates. Keep the same JSON keys and structure.",
 ];
 
+// Fork: lines whose last line holds only a word or two (cv-line-fit.mjs).
+const LINES_TASK = [
+  "In a tailored CV, some lines wrap so that their last line holds only a word or two, which wastes space and looks cut. The message below lists each one, with how many characters to cut or add. Rewrite ONLY those lines and return the corrected CV JSON.",
+  "",
+  "For each listed line:",
+  "- Prefer cutting so the line takes one line less: tighten the wording, drop filler words (\"in order to\", \"various\", \"successfully\"), use a shorter synonym, shorten a list. Cut a few more characters than asked, for margin.",
+  "- Keep the line's opening verb, every number exactly as written, its tools and the job keywords: the fact check compares each bullet with cv.md.",
+  "- Only if cutting would lose the point, fill the last line instead, and only with wording or facts that cv.md already has for that same entry. Never invent.",
+  "- For a skills line, drop or reorder the least relevant items rather than rewording them; items stay bare names exactly as cv.md writes them.",
+  "Change nothing else. Never add a fact that is not in cv.md. Keep the same JSON keys and structure. The CV must still fit on one page, so never make it longer.",
+];
+
 function readSource(name: string): string {
   try {
     return fs.readFileSync(path.join(careerOpsRoot(), name), "utf8");
@@ -44,7 +56,7 @@ export async function repairCvPayload(
   cliId: string,
   payload: Record<string, unknown>,
   gateError: string,
-  problem: "facts" | "length" = "facts",
+  problem: "facts" | "length" | "lines" = "facts",
 ): Promise<{ ok: true; payload: Record<string, unknown> } | { ok: false; detail: string }> {
   const digest = readSource("article-digest.md");
   const factTask = [
@@ -58,11 +70,11 @@ export async function repairCvPayload(
     "Change nothing else. Never add a fact that is not in cv.md. Keep the same JSON keys and structure. The CV must still fit on one page, so never make it longer.",
   ];
   const prompt = [
-    ...(problem === "length" ? LENGTH_TASK : factTask),
+    ...(problem === "length" ? LENGTH_TASK : problem === "lines" ? LINES_TASK : factTask),
     "",
     "Reply with the full corrected JSON between <<cv-json>> and <</cv-json>>, and nothing else.",
     "",
-    problem === "length" ? "## Render message" : "## Fact check message",
+    problem === "length" ? "## Render message" : problem === "lines" ? "## Lines to fix" : "## Fact check message",
     gateError,
     "",
     "## cv.md",
