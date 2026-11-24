@@ -424,7 +424,6 @@ function Studio({ n, data }: { n: string; data: Loaded }) {
             <CvPreview html={html} pdfHref={pdfHref} />
           ) : (
             <section aria-label="Your full CV" className="max-h-[80vh] overflow-auto rounded-2xl border border-border bg-surface">
-              <p className="border-b border-border px-5 py-2.5 text-xs text-muted">Everything in your CV, including what Miao left out. Copy a line, then use + Add a line.</p>
               <FullCv />
             </section>
           )}
