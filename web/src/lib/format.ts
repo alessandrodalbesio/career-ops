@@ -17,6 +17,7 @@ export { canonStatus, legitimacyTone };
 export const CANONICAL_STATES = [
   "Evaluated",
   "Speculative",
+  "Work in Progress",
   "Ready to Apply",
   "Applied",
   "Responded",
@@ -34,6 +35,7 @@ export const CANONICAL_STATES = [
  *  full list the tracker accepts. */
 export const PICKER_STATES = [
   "Evaluated",
+  "Work in Progress",
   "Ready to Apply",
   "Applied",
   "Interview",
@@ -52,6 +54,7 @@ export function statusDot(status: string): string {
   if (c.includes("HIRED") || c.includes("INTERVIEW") || c.includes("OFFER")) return "bg-emerald-400";
   if (c.includes("APPLIED") || c.includes("RESPONDED") || c.includes("ASSESSMENT")) return "bg-sky-400";
   if (c.includes("SPECULATIVE")) return "bg-pink-400";
+  if (c.includes("WORK IN PROGRESS")) return "bg-violet-400";
   if (c.includes("READY")) return "bg-amber-400";
   if (c.includes("REJECTED") || c.includes("SKIP")) return "bg-red-400";
   if (c.includes("DISCARDED")) return "bg-zinc-600";

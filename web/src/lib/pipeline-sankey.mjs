@@ -149,7 +149,7 @@ export function classifyLeaf(app, log) {
   if (status === "EVALUATED") return "evaluated";
   // A create-a-role pitch: live, but nothing has been submitted to a posting.
   if (status === "SPECULATIVE") return "speculative";
-  if (status === "READY") return "evaluated";
+  if (status === "READY" || status === "WORK") return "evaluated";
   if (status === "APPLIED") return "waiting";
   if (status === "RESPONDED") return "screening";
   if (status === "ASSESSMENT") return "assessment";

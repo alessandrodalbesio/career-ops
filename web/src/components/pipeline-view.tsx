@@ -765,7 +765,7 @@ export function PipelineView({
                   : "border-transparent text-muted hover:text-foreground",
               )}
             >
-              {t === "READY" ? "READY TO APPLY" : t}
+              {t === "READY" ? "READY TO APPLY" : t === "WORK" ? "WORK IN PROGRESS" : t}
               <span className={cn(
                 "min-w-[1.25rem] rounded-full px-1.5 py-px text-center text-[10px] font-semibold tabular-nums transition-colors",
                 visibleTab === t ? "bg-brand text-brand-foreground" : "bg-surface-hover text-muted",

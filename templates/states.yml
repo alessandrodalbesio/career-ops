@@ -26,6 +26,12 @@ states:
     description: Create-a-role pitch in flight (no posting); pre-response
     dashboard_group: speculative
 
+  - id: wip
+    label: Work in Progress
+    aliases: [wip, "work in progress", work_in_progress, "in progress"]
+    description: Being prepared (CV, cover letter or form in progress); not yet ready to send
+    dashboard_group: wip
+
   - id: ready
     label: Ready to Apply
     aliases: [ready, "ready to apply", ready_to_apply]
