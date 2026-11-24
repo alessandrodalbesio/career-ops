@@ -151,8 +151,8 @@ function ItemBlock({ item, section, siblings, first, last, ...common }: Common &
   return (
     <div className={cn("py-2", isHidden && "opacity-50")}>
       {showHeader && (
-        <div className="flex items-center gap-1">
-          <p className="flex-1 truncate text-sm font-medium text-foreground">{item.label}</p>
+        <div className="flex items-start gap-1">
+          <p className="min-w-0 flex-1 break-words pt-1 text-sm font-medium leading-snug text-foreground">{item.label}</p>
           {section.items.length > 1 && <MoveButtons parent={section.id} id={item.id} siblings={siblings} first={first} last={last} dispatch={dispatch} label={item.label} />}
           <HideButton id={item.id} hidden={isHidden} dispatch={dispatch} label={item.label} />
         </div>

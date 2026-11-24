@@ -160,7 +160,7 @@ export function parseBlocks(html) {
       if (cls) {
         items = elementsWithClass(html, el.open, el.end, "div", cls).map((e, k) => {
           const labelMatch = new RegExp(`class="${ENTRY_LABEL_CLASS[cls]}"[^>]*>([\\s\\S]*?)</`).exec(html.slice(e.open, e.end));
-          const label = htmlText(labelMatch ? labelMatch[1].split("<")[0] : html.slice(e.open, e.end)).slice(0, 80);
+          const label = htmlText(labelMatch ? labelMatch[1].split("<")[0] : html.slice(e.open, e.end)).slice(0, 200);
           const lis = bulletsIn(html, e.open, e.end, `${id}i${k}`);
           return { id: `${id}i${k}`, kind: "entry", label: label.replace(/:$/, ""), start: e.start, end: e.end, bullets: lis.length ? lis : fieldsIn(html, e.open, e.end, `${id}i${k}`, cls) };
         });
