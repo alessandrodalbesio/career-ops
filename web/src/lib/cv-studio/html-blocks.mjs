@@ -16,7 +16,7 @@
  */
 
 const ENTRY_CLASSES = ["job", "project", "edu-item", "cert-item", "award-item", "skill-item"];
-const ENTRY_LABEL_CLASS = { job: "job-company", project: "project-title", "edu-item": "edu-title", "cert-item": "cert-title", "award-item": "award-title", "skill-item": "skill-category" };
+const ENTRY_LABEL_CLASS = { job: "job-company", project: "project-title", "edu-item": "edu-title", "cert-item": "cert-title", "award-item": "award-org", "skill-item": "skill-category" };
 
 const KIND_BY_CLASS = [
   ["summary-text", "summary"],
@@ -99,7 +99,7 @@ function bulletsIn(html, from, to, prefix) {
 // Fork: entries with no <li> (skills, leadership/awards, languages/certifications)
 // still have text worth editing. Each text span becomes a "field" bullet: its
 // words can change, but it is never moved, hidden or added to on its own.
-const FIELD_SPANS = { "award-item": ["award-title", "award-org"], "cert-item": ["cert-title", "cert-org"] };
+const FIELD_SPANS = { "award-item": ["award-title", "award-org", "award-desc"], "cert-item": ["cert-title", "cert-org"] };
 function fieldsIn(html, from, to, prefix, cls) {
   const out = [];
   const push = (start, end, inner) => {

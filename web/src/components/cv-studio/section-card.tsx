@@ -305,7 +305,7 @@ function BulletRow({ n, bullet, summary, parent, siblings, first, last, movable,
   };
 
   return (
-    <li data-bullet={bullet.id} data-check={toCheck ? "" : undefined} className={cn("group relative rounded-lg border px-3 py-2 text-sm transition-colors", isHidden ? "border-dashed border-border opacity-50" : "border-transparent hover:border-border", toCheck && "bg-amber-50/60")}>
+    <li data-bullet={bullet.id} data-check={toCheck ? "" : undefined} className={cn("group relative rounded-lg border px-3 py-2 text-sm transition-colors", bullet.field && !editing && "flex items-center gap-2 py-1", isHidden ? "border-dashed border-border opacity-50" : "border-transparent hover:border-border", toCheck && "bg-amber-50/60")}>
       {toCheck && (
         <span className="group/edge absolute -left-px bottom-1.5 top-1.5 w-[3px] rounded-full bg-amber-400" aria-hidden>
           <span className="pointer-events-none absolute left-2 top-0 z-50 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-[11px] font-medium text-background opacity-0 shadow-md transition-opacity group-hover/edge:opacity-100">
@@ -339,7 +339,7 @@ function BulletRow({ n, bullet, summary, parent, siblings, first, last, movable,
           </div>
         </div>
       ) : (
-        <p className={cn("leading-relaxed", isHidden ? "text-faint line-through" : "text-foreground")}>
+        <p className={cn("leading-relaxed", bullet.field && "flex-1", isHidden ? "text-faint line-through" : "text-foreground")}>
           {comparing && shown.source === "tailored" && bullet.change === "edited" && bullet.base !== null && bullet.similarity >= REWRITE_FLOOR ? <Diff before={bullet.base} after={bullet.tailored} /> : <Bold text={shown.text} />}
         </p>
       )}
@@ -348,7 +348,7 @@ function BulletRow({ n, bullet, summary, parent, siblings, first, last, movable,
           <span className="font-medium">Your original:</span> {bullet.base}
         </p>
       )}
-      {!editing && <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      {!editing && <div className={cn("flex flex-wrap items-center gap-1.5", !bullet.field && "mt-1.5")}>
         {toCheck && (
           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">Not from your CV</span>
         )}

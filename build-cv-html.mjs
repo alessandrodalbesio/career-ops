@@ -642,11 +642,13 @@ function buildCertifications(entries, partial) {
       // empty <span> for table-cell alignment rather than being removed.
       ['ORG_BLOCK',  { value: escapeHtml(e.org || ''),  present: Boolean(e.org) }],
       ['YEAR_BLOCK', { value: escapeHtml(e.year || ''), present: Boolean(e.year) }],
+      ['DESC_BLOCK', { value: escapeHtml(e.description || ''), present: Boolean(e.description) }],
     ]);
     return fillEntry(entryTemplate, blocks, {
       TITLE: escapeHtml(e.title || ''),
       ORG:   escapeHtml(e.org || ''),
       YEAR:  escapeHtml(e.year || ''),
+      DESC:  escapeHtml(e.description || ''),
     }, blockValues);
   }).join('\n    ');
 }
@@ -676,11 +678,13 @@ function buildAwards(entries, partial) {
       // _EMPTY fallback so the table cells stay aligned across rows.
       ['ORG_BLOCK',  { value: escapeHtml(e.org || ''),  present: Boolean(e.org) }],
       ['YEAR_BLOCK', { value: escapeHtml(e.year || ''), present: Boolean(e.year) }],
+      ['DESC_BLOCK', { value: escapeHtml(e.description || ''), present: Boolean(e.description) }],
     ]);
     return fillEntry(entryTemplate, blocks, {
       TITLE: escapeHtml(e.title || ''),
       ORG:   escapeHtml(e.org || ''),
       YEAR:  escapeHtml(e.year || ''),
+      DESC:  escapeHtml(e.description || ''),
     }, blockValues);
   }).join('\n    ');
 }
