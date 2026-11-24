@@ -17,7 +17,7 @@ import { resolvePdfPaths, type PdfPaths } from "@/lib/pdf-paths.mjs";
 import { renderAndMarkPdf, writeCvHtml, pdfRunOutcome } from "@/lib/pdf-render.mjs";
 import { materializeTailoredCv, withSharedPdfPath } from "@/lib/cv-from-json.mjs";
 import { saveBuiltCv } from "@/lib/pdf-run-save.mjs";
-import { isFactGateError, repairCvPayload } from "@/lib/cv-fact-repair";
+import { isFactGateError, isOverflowError, repairCvPayload } from "@/lib/cv-fact-repair";
 import { createCvEnvelopeFilter } from "@/lib/cv-envelope.mjs";
 import { createReportEnvelopeFilter } from "@/lib/report-envelope.mjs";
 import { persistEvaluation, evaluateRunOutcome, evaluationOutcomeEvent } from "@/lib/report-persist.mjs";
@@ -666,6 +666,7 @@ export async function POST(req: Request) {
                 // Fork: one automatic retry when the fact gate blocks the CV
                 // (cv-fact-repair.ts). Any other failure is reported as before.
                 let current = { ...envelope, format: sheet.format };
+                const retried = { facts: false, length: false };
                 for (let attempt = 0; ; attempt++) {
                 let failure = null as string | null;
                 await saveBuiltCv({
@@ -692,16 +693,20 @@ export async function POST(req: Request) {
                   render: async (built) => { failure = await renderPdf(pdfPaths, sheet.format, built.ats); },
                 });
                 if (!failure || closed) break;
-                if (attempt === 0 && current.kind === "json" && current.payload && isFactGateError(failure)) {
-                  send({ type: "text", text: `⚠️ The fact check blocked the first version: ${failure.slice(0, 1200)}\n` });
-                  send({ type: "status", label: "Fixing the CV and trying once more…" });
-                  const fix = await repairCvPayload(cliId, current.payload as Record<string, unknown>, failure);
+                const problem = isFactGateError(failure) ? "facts" : isOverflowError(failure) ? "length" : null;
+                if (problem && !retried[problem] && current.kind === "json" && current.payload) {
+                  retried[problem] = true;
+                  send({ type: "text", text: problem === "facts"
+                    ? `⚠️ The fact check blocked the first version: ${failure.slice(0, 1200)}\n`
+                    : `⚠️ The first version was longer than one page. Trimming it.\n` });
+                  send({ type: "status", label: problem === "facts" ? "Fixing the CV and trying once more…" : "Trimming the CV to one page…" });
+                  const fix = await repairCvPayload(cliId, current.payload as Record<string, unknown>, failure, problem);
                   if (closed) break;
                   if (fix.ok) { current = { ...current, payload: fix.payload }; continue; }
                   send({ type: "error", msg: `${failure.slice(0, 1300)} (The automatic fix did not work: ${fix.detail})`.slice(0, 1500) });
                   break;
                 }
-                send({ type: "error", msg: (attempt > 0 ? `Still blocked after one automatic fix. ${failure}` : failure).slice(0, 1500) });
+                send({ type: "error", msg: (attempt > 0 ? `Still not right after an automatic fix. ${failure}` : failure).slice(0, 1500) });
                 break;
                 }
               } catch (e) {

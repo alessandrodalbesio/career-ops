@@ -8,6 +8,18 @@ import { careerOpsRoot } from "@/lib/career-ops";
 import { runRewrite } from "@/lib/cv-studio/rewrite-run";
 
 export const isFactGateError = (msg: string) => /Fact check failed/i.test(msg);
+export const isOverflowError = (msg: string) => /the allowed maximum is \d+ pages?/i.test(msg);
+
+const LENGTH_TASK = [
+  "A tailored CV came out longer than one page (see the message below), usually by only a few lines. Make it fit on ONE page and return the corrected CV JSON.",
+  "",
+  "How to cut, in this order, stopping as soon as it surely fits:",
+  "- Remove the bullets least relevant to the job (the job is described by the summary and the CV's focus), starting with the longest. Every job and project keeps at least one bullet or line.",
+  "- Then remove the least relevant project, if there are three or more.",
+  "- Then shorten the summary to one sentence.",
+  "Cut a little more than the overflow (2-4 lines' worth), so it fits with room to spare.",
+  "Never change the wording of the lines you keep. Never add anything. Never remove contact details, job titles, employers, schools or dates. Keep the same JSON keys and structure.",
+];
 
 function readSource(name: string): string {
   try {
@@ -32,9 +44,10 @@ export async function repairCvPayload(
   cliId: string,
   payload: Record<string, unknown>,
   gateError: string,
+  problem: "facts" | "length" = "facts",
 ): Promise<{ ok: true; payload: Record<string, unknown> } | { ok: false; detail: string }> {
   const digest = readSource("article-digest.md");
-  const prompt = [
+  const factTask = [
     "A tailored CV was blocked by a fact check. Fix ONLY what the fact check names and return the corrected CV JSON.",
     "",
     "How to fix each kind of problem:",
@@ -43,10 +56,13 @@ export async function repairCvPayload(
     "- award / employer / education / certification not in sources: that field must match cv.md word for word (e.g. an award title is only the role or prize name as cv.md writes it; move any description out of it or drop it).",
     "- metric not in sources: use the number exactly as cv.md states it, or remove it.",
     "Change nothing else. Never add a fact that is not in cv.md. Keep the same JSON keys and structure. The CV must still fit on one page, so never make it longer.",
+  ];
+  const prompt = [
+    ...(problem === "length" ? LENGTH_TASK : factTask),
     "",
     "Reply with the full corrected JSON between <<cv-json>> and <</cv-json>>, and nothing else.",
     "",
-    "## Fact check message",
+    problem === "length" ? "## Render message" : "## Fact check message",
     gateError,
     "",
     "## cv.md",
