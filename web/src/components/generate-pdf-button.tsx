@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FilePlus2, FileText, FileUser, Hourglass, Loader2, Sparkles, SquarePen, TriangleAlert } from "lucide-react";
+import { Check, FilePlus2, FileText, FileUser, Hourglass, Loader2, Sparkles, SquarePen, TriangleAlert, Undo2 } from "lucide-react";
 import { useJobs } from "@/components/jobs/job-store";
 import { DocCard, iconPrimary, iconSecondary } from "@/components/ui/doc-card";
 import { Tip } from "@/components/ui/tip";
@@ -49,26 +49,22 @@ export function GeneratePdfButton({ n, company, onDisk }: { n: string; company: 
       </DocCard>
     );
 
+  if (state.kind === "ready" && confirming)
+    // Asking before a rewrite: a tick to go ahead, an arrow to go back.
+    return (
+      <DocCard icon={icon} title="CV" status="Rewrite from scratch?" tone="ready">
+        <Tip label="Keep this CV">
+          <button onClick={() => setConfirming(false)} aria-label="Keep this CV" className={iconSecondary}><Undo2 className="size-4" /></button>
+        </Tip>
+        <Tip label="Yes, rewrite it (your edits will be lost)" align="end" wrap>
+          <button onClick={() => { setConfirming(false); generate(); }} aria-label="Yes, rewrite it" className={iconPrimary}><Check className="size-4" /></button>
+        </Tip>
+      </DocCard>
+    );
+
   if (state.kind === "ready")
     return (
-      <DocCard
-        icon={icon}
-        title="CV"
-        status="Ready"
-        tone="ready"
-        footer={
-          <>
-            {confirming && (
-              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm">
-                <span className="text-foreground">Miao rewrites the CV from scratch. Your edits will be lost.</span>
-                <button onClick={() => { setConfirming(false); generate(); }} className="ml-auto rounded-lg bg-foreground px-3 py-1 text-xs font-medium text-background">Rewrite</button>
-                <button onClick={() => setConfirming(false)} className="rounded-lg px-2 py-1 text-xs text-muted hover:text-foreground">Cancel</button>
-              </div>
-            )}
-            <FailureNote failure={state.failure} jobQuery={jobQuery} />
-          </>
-        }
-      >
+      <DocCard icon={icon} title="CV" status="Ready" tone="ready" footer={<FailureNote failure={state.failure} jobQuery={jobQuery} />}>
         <Tip label="Open CV">
           <button onClick={() => setViewing(true)} aria-label="Open CV" className={iconPrimary}><FileText className="size-4" /></button>
         </Tip>
@@ -77,7 +73,7 @@ export function GeneratePdfButton({ n, company, onDisk }: { n: string; company: 
           <Link href={studioHref} aria-label="Edit CV" className={iconSecondary}><SquarePen className="size-4" /></Link>
         </Tip>
         <Tip label="Rewrite it with Miao" align="end">
-          <button onClick={() => setConfirming(true)} aria-label="New version" className={iconSecondary}><Sparkles className="size-4" /></button>
+          <button onClick={() => setConfirming(true)} aria-label="Rewrite it with Miao" className={iconSecondary}><Sparkles className="size-4" /></button>
         </Tip>
       </DocCard>
     );
