@@ -46,7 +46,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 800; // a real oferta evaluation / pdf-mode CV tailoring + render is heavy and multi-step
 
 export async function POST(req: Request) {
-  const body = await readJsonObject<{ kind?: string; input?: string; cliId?: string; brief?: unknown; evaluationSections?: unknown; ats?: unknown; runId?: unknown; meta?: unknown }>(req);
+  const body = await readJsonObject<{ kind?: string; input?: string; cliId?: string; brief?: unknown; evaluationSections?: unknown; ats?: unknown; runId?: unknown; meta?: unknown; pageText?: unknown }>(req);
   if (!body) return new Response(JSON.stringify({ error: "bad json" }), { status: 400 });
   const { kind = "evaluate", input, cliId: requestedCliId, brief } = body;
   const evaluation = kind === "evaluate" ? parseEvaluationOptions(body.evaluationSections) : undefined;
@@ -239,7 +239,11 @@ export async function POST(req: Request) {
     // boards, any miss) leaves the worker on its WebFetch path.
     // No request abort signal: runs outlive the browser (run-hub.mjs), so a tab
     // closed while the JD is read must not drop the evaluation.
-    const prefetch = kind === "evaluate" ? await prefetchJd(input, runCoreCli) : null;
+    // Fork: text the user's own device fetched (iPhone Shortcut) replaces the
+    // server read. LinkedIn answers HTTP 429 to WebFetch but not to a phone.
+    const rawPageText = typeof body.pageText === "string" ? body.pageText.trim() : "";
+    const deviceJd = kind === "evaluate" && rawPageText.length >= 200 ? rawPageText.slice(0, 120_000) : null;
+    const prefetch = kind === "evaluate" && !deviceJd ? await prefetchJd(input, runCoreCli) : null;
     // A partial JD must not reach a worker that could score and save it as the
     // whole posting, so refuse here instead of trusting the prompt to stop it.
     if (isTruncatedJd(prefetch?.text)) {
@@ -271,6 +275,7 @@ export async function POST(req: Request) {
       evaluationInstructions: instructionFile?.reference,
       prefetchedJd,
       closedEvidence,
+      deviceJd,
     });
 
     const isClaude = cliId === "claude";

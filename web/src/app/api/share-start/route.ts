@@ -6,6 +6,8 @@ export const dynamic = "force-dynamic";
 // Fork: start an evaluation from a shared job link WITHOUT a browser page, for
 // the iPhone Shortcut (which then shows a notification and stays in LinkedIn).
 // POST {"url": "..."} or {"text": "...shared text with a link..."}.
+// Optional "pageText": the posting page as plain text, fetched by the phone
+// itself, so the server does not have to read it (LinkedIn 429s the server).
 //
 // It starts the normal dashboard run by calling /api/run on this same server,
 // reads the first event so the run is registered, then lets go: runs live on
@@ -54,6 +56,8 @@ export async function POST(req: Request) {
         cliId,
         runId,
         meta: { title: "Evaluate · shared link", subtitle: url, page: "/share" },
+        // The page text the phone fetched itself (see /api/run deviceJd).
+        ...(typeof body.pageText === "string" && body.pageText.trim() ? { pageText: body.pageText } : {}),
       }),
     });
   } catch {
