@@ -16,7 +16,7 @@
  *
  * @typedef {"same"|"edited"|"new"} Change
  * @typedef {{id: string, tailored: string, base: string|null, change: Change, similarity: number,
- *            keywords: {tailored: string[], base: string[]}, drivenBy: string[], field?: boolean}} StudioBullet
+ *            keywords: {tailored: string[], base: string[]}, drivenBy: string[], field?: boolean, keepTailored?: boolean}} StudioBullet
  * @typedef {{text: string, keywords: string[]}} Restorable
  * @typedef {{id: string, kind: "entry"|"tag"|"text", label: string, ownKeywords: string[],
  *            bullets: StudioBullet[], restorable: Restorable[]}} StudioItem
@@ -56,6 +56,17 @@ function sameCompany(a, b) {
   const x = a.toLowerCase().trim();
   const y = b.toLowerCase().trim();
   return Boolean(x && y) && (x === y || x.includes(y) || y.includes(x));
+}
+
+/**
+ * A tailored CV may print a project's school differently from cv.md
+ * ("KitKat (Nestlé): Market Research (Bocconi)" vs "…, Bocconi University"),
+ * so projects match on the name before the colon when both titles have one.
+ */
+function sameProject(a, b) {
+  const head = (t) => (t.includes(":") ? t.slice(0, t.indexOf(":")) : "").toLowerCase().trim();
+  const x = head(a);
+  return x ? x === head(b) : sameCompany(a, b);
 }
 
 /**
@@ -107,7 +118,10 @@ export function buildStudioDoc({ tree, base, keywords, sourceHash, keywordsIn, i
         const original = base.summary;
         return { id: item.id, kind: item.kind, label: item.label, ownKeywords, bullets: [bullet(b, original, original ? similarity(b.text, original) : 0)], restorable: [] };
       }
-      const entry = item.kind === "entry" && s.kind === "experience" ? base.entries.find((e) => sameCompany(e.company, item.label)) : undefined;
+      const entry = item.kind !== "entry" ? undefined
+        : s.kind === "experience" ? base.entries.find((e) => sameCompany(e.company, item.label))
+        : s.kind === "projects" ? (base.projects ?? []).find((p) => sameProject(item.label, p.company))
+        : undefined;
       const originals = entry?.bullets ?? [];
       const fields = item.bullets.length > 0 && item.bullets.every((b) => b.field);
       const { pairs, scores, unused } = fields ? { pairs: item.bullets.map(() => null), scores: item.bullets.map(() => 0), unused: [] } : alignBullets(item.bullets.map((b) => b.text), originals);
@@ -116,7 +130,9 @@ export function buildStudioDoc({ tree, base, keywords, sourceHash, keywordsIn, i
         kind: item.kind,
         label: item.label,
         ownKeywords,
-        bullets: item.bullets.map((b, k) => bullet(b, pairs[k] === null ? null : originals[pairs[k]], scores[k])),
+        // Project lines follow house rules the cv.md originals break (no grades or
+        // statistics), so the conservative tone never swaps one back on its own.
+        bullets: item.bullets.map((b, k) => ({ ...bullet(b, pairs[k] === null ? null : originals[pairs[k]], scores[k]), ...(s.kind === "projects" ? { keepTailored: true } : {}) })),
         restorable: item.bullets.length ? unused.map((j) => ({ text: originals[j], keywords: keywordsIn(originals[j]) })) : [],
       };
     }),
@@ -358,7 +374,7 @@ export function hiddenSet(doc, edits) {
 export function bulletShown(b, edits) {
   const use = edits.use[b.id];
   if (use?.kind === "custom") return { source: "custom", text: use.text, keywords: use.keywords };
-  const wantBase = use ? use.kind === "base" : edits.preset.tone === "conservative" && b.change === "edited" && b.similarity < HEAVY_EDIT;
+  const wantBase = use ? use.kind === "base" : edits.preset.tone === "conservative" && !b.keepTailored && b.change === "edited" && b.similarity < HEAVY_EDIT;
   if (wantBase && b.base !== null) return { source: "base", text: b.base, keywords: b.keywords.base };
   return { source: "tailored", text: b.tailored, keywords: b.keywords.tailored };
 }

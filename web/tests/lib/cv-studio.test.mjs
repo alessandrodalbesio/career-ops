@@ -9,6 +9,7 @@ import * as cvMarkdown from "../../../lib/cv-markdown.mjs";
 import {
   alignBullets,
   buildStudioDoc,
+  bulletShown,
   emptyEdits,
   parseEdits,
   applyRecordedEdit,
@@ -111,7 +112,45 @@ test("parseBaseCv reads the summary and each entry's bullets from cv.md", () => 
       { company: "TechFin Corp", bullets: ["Led ML platform team (3 engineers), built model registry and feature store", "Designed fraud pipeline on Kafka & Flink", "Ran the on-call rotation for the model serving stack"] },
       { company: "DataStartup Inc", bullets: ["Built NLP pipeline"] },
     ],
+    projects: [],
   });
+});
+
+test("project bullets pair with cv.md even when the title prints the school differently", () => {
+  const html = `<html><body><div class="page">
+  <div class="section">
+    <div class="section-title">Projects</div>
+    <div class="project">
+  <div class="project-header"><span class="project-title">KitKat (Nestlé): Market Research (Bocconi)</span></div>
+  <ul class="project-bullets"><li class="project-desc">Ran 6 exploratory interviews and a Qualtrics survey</li>
+  <li class="project-desc">Wrote something cv.md never says</li></ul>
+</div>
+  </div>
+</div></body></html>`;
+  const md = `## Projects
+
+### **KitKat (Nestlé): Market Research, Bocconi University** | 2026, project
+
+- Ran 6 exploratory interviews and designed a Qualtrics survey (299 responses)
+- Measured an NPS of −3
+
+### **Nutella (Ferrero): Managing Strong Brands, WU Vienna** | 2026, project
+
+- Assessed Nutella's brand strength
+`;
+  const base = parseBaseCv(md, cvMarkdown);
+  assert.deepEqual(base.projects.map((p) => p.company), ["KitKat (Nestlé): Market Research, Bocconi University", "Nutella (Ferrero): Managing Strong Brands, WU Vienna"]);
+  const tree = parseBlocks(html);
+  const doc = buildStudioDoc({ tree, base, keywords: [], sourceHash: "h", keywordsIn: () => [], itemText: () => "", fixedText: "" });
+  const kitkat = doc.sections[0].items[0];
+  assert.deepEqual(kitkat.bullets.map((b) => [b.change, b.base]), [
+    ["edited", "Ran 6 exploratory interviews and designed a Qualtrics survey (299 responses)"],
+    ["new", null],
+  ]);
+  assert.deepEqual(kitkat.restorable.map((r) => r.text), ["Measured an NPS of −3"]);
+  const conservative = { ...emptyEdits("h"), preset: { length: "full", tone: "conservative" } };
+  assert.equal(bulletShown(kitkat.bullets[0], conservative).text, "Ran 6 exploratory interviews and a Qualtrics survey");
+  assert.equal(bulletShown(kitkat.bullets[0], { ...conservative, use: { [kitkat.bullets[0].id]: { kind: "base" } } }).source, "base");
 });
 
 test("alignBullets pairs rewrites with their originals and leaves the rest unused", () => {
